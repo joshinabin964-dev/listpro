@@ -5,19 +5,15 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
 
-// Magic math to calculate distance between two GPS points (in Kilometers)
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   var R = 6371; 
   var dLat = deg2rad(lat2 - lat1);
   var dLon = deg2rad(lon2 - lon1);
-  var a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  var a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2);
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   return R * c; 
 }
-function deg2rad(deg: number) { return deg * (Math.PI / 180); }
+function deg2rad(deg: number) { return deg * (Math.PI/180); }
 
 export default function MarketplacePage() {
   const [listings, setListings] = useState<any[]>([]);
@@ -30,27 +26,18 @@ export default function MarketplacePage() {
   useEffect(() => {
     const fetchMarketplaceData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      let userLat = null;
-      let userLng = null;
-
+      let userLat = null; let userLng = null;
       if (session) {
         const { data: profile } = await supabase.from("profiles").select("latitude, longitude").eq("id", session.user.id).single();
-        if (profile && profile.latitude && profile.longitude) {
-          userLat = profile.latitude;
-          userLng = profile.longitude;
-          setUserLoc({ lat: userLat, lng: userLng });
-        }
+        if (profile && profile.latitude && profile.longitude) { userLat = profile.latitude; userLng = profile.longitude; setUserLoc({ lat: userLat, lng: userLng }); }
       }
-
       const { data, error } = await supabase.from("listings").select("*, profiles(email)").eq("is_public", true).order("created_at", { ascending: false });
-      
       if (!error && data) {
         let processedData = data;
         if (userLat && userLng) {
           processedData = data.filter((listing: any) => {
             if (!listing.latitude || !listing.longitude) return false; 
-            const dist = getDistanceFromLatLonInKm(userLat, userLng, listing.latitude, listing.longitude);
-            return dist <= 80; 
+            return getDistanceFromLatLonInKm(userLat, userLng, listing.latitude, listing.longitude) <= 80; 
           });
         }
         setListings(processedData);
@@ -64,35 +51,21 @@ export default function MarketplacePage() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { toast.error("Please log in to contact the seller."); router.push("/login"); return; }
     if (session.user.id === listing.user_id) { toast.error("This is your own listing!"); return; }
-
     const message = prompt(`Write a message to the seller about "${listing.product_name}":`);
     if (message && message.trim() !== "") {
-      const { error } = await supabase.from("messages").insert({
-        listing_id: listing.id, sender_id: session.user.id, receiver_id: listing.user_id, content: message
-      });
-      if (error) { toast.error("Failed to send message."); } 
-      else { toast.success("✅ Message sent successfully!"); }
+      const { error } = await supabase.from("messages").insert({ listing_id: listing.id, sender_id: session.user.id, receiver_id: listing.user_id, content: message });
+      if (error) { toast.error("Failed to send message."); } else { toast.success("✅ Message sent successfully!"); }
     }
   };
 
-  // NEW: Handle Make an Offer
   const handleMakeOffer = async (listing: any) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { toast.error("Please log in to make an offer."); router.push("/login"); return; }
     if (session.user.id === listing.user_id) { toast.error("You can't make an offer on your own item!"); return; }
-
     const offerAmount = prompt(`Enter your offer amount for "${listing.product_name}" (Current price: $${listing.sale_price}):`);
     if (offerAmount && !isNaN(parseFloat(offerAmount))) {
-      const { error } = await supabase.from("offers").insert({
-        listing_id: listing.id,
-        buyer_id: session.user.id,
-        seller_id: listing.user_id,
-        amount: parseFloat(offerAmount),
-        status: 'pending'
-      });
-      
-      if (error) { toast.error("Failed to send offer."); } 
-      else { toast.success(` Offer of $${offerAmount} sent to seller!`); }
+      const { error } = await supabase.from("offers").insert({ listing_id: listing.id, buyer_id: session.user.id, seller_id: listing.user_id, amount: parseFloat(offerAmount), status: 'pending' });
+      if (error) { toast.error("Failed to send offer."); } else { toast.success(`💰 Offer of $${offerAmount} sent to seller!`); }
     }
   };
 
@@ -124,18 +97,16 @@ export default function MarketplacePage() {
 
         {userLoc ? (
           <div className="flex items-center justify-center gap-2 mb-8 text-green-400 bg-green-900/20 py-2 px-4 rounded-full border border-green-800 w-fit mx-auto">
-            <span>📍</span>
-            <span className="text-sm font-bold">Showing items within 50 miles of your location</span>
+            <span>📍</span><span className="text-sm font-bold">Showing items within 50 miles of your location</span>
           </div>
         ) : (
           <div className="flex items-center justify-center gap-2 mb-8 text-yellow-400 bg-yellow-900/20 py-2 px-4 rounded-full border border-yellow-800 w-fit mx-auto">
-            <span>⚠️</span>
-            <span className="text-sm font-bold">Location not set. <Link href="/dashboard" className="underline hover:text-yellow-300">Set location in Dashboard</Link> to see nearby items!</span>
+            <span>⚠️</span><span className="text-sm font-bold">Location not set. <Link href="/dashboard" className="underline hover:text-yellow-300">Set location in Dashboard</Link> to see nearby items!</span>
           </div>
         )}
 
         <div className="flex flex-col md:flex-row gap-4 mb-12 bg-gray-900 p-4 rounded-2xl border border-gray-800">
-          <input type="text" placeholder="🔍 Search products..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-grow p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500" />
+          <input type="text" placeholder=" Search products..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-grow p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500" />
           <select value={filterCondition} onChange={(e) => setFilterCondition(e.target.value)} className="p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 w-full md:w-48">
             <option value="All">All Conditions</option>
             <option value="New">Brand New</option>
@@ -170,9 +141,13 @@ export default function MarketplacePage() {
                     <div className="flex items-baseline gap-1 mb-4">
                       <span className="text-3xl font-bold text-purple-400">${price}</span>
                     </div>
-                    <p className="text-gray-400 text-sm mb-6 line-clamp-2 flex-grow border-t border-gray-800 pt-4">{descParts[1] || 'No description provided.'}</p>
+                    <p className="text-gray-400 text-sm mb-4 line-clamp-2 flex-grow border-t border-gray-800 pt-4">{descParts[1] || 'No description provided.'}</p>
                     
-                    {/* NEW: Two buttons side by side */}
+                    {/* NEW: View Seller Profile Link */}
+                    <Link href={`/seller/${listing.user_id}`} className="text-xs text-gray-500 hover:text-blue-400 mb-4 flex items-center gap-1 transition">
+                      👤 View Seller Profile & More Items
+                    </Link>
+                    
                     <div className="flex gap-3 mt-auto">
                       <button onClick={() => handleMakeOffer(listing)} className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">
                         💰 Make Offer
