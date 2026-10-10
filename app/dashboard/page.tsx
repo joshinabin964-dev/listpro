@@ -4,7 +4,6 @@ import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import LocationSetup from "@/components/LocationSetup";
-import NotificationBell from "@/components/NotificationBell";
 
 export default function DashboardPage() {
   const [plan, setPlan] = useState("free");
@@ -20,6 +19,7 @@ export default function DashboardPage() {
       const { data: profile } = await supabase.from("profiles").select("plan, country, latitude, longitude").eq("id", session.user.id).single();
       if (profile) setPlan(profile.plan || "free");
 
+      // Calculate Profit Stats
       const { data: listings } = await supabase.from("listings").select("sale_price, cost_price, status").eq("user_id", session.user.id);
       if (listings) {
         const soldItems = listings.filter(l => l.status === "Sold");
@@ -45,11 +45,22 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">ListPro</h1>
           <div className="flex items-center gap-4">
-            <Link href="/inquiries"><button className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition">📥 Inbox</button></Link>
-            <Link href="/pricing"><button className={`px-4 py-2 rounded-lg text-sm font-bold transition ${plan === 'pro' ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-white'}`}>{plan === 'pro' ? '⭐ Pro Member' : 'Upgrade Plan'}</button></Link>
-            {/* NEW: Notification Bell */}
-            <NotificationBell />
-            <button onClick={handleLogout} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition">Sign Out</button>
+            {/* FIXED: Added the Bell Icon here! */}
+            <Link href="/inquiries">
+              <button className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition flex items-center gap-2">
+                🔔 Notifications
+              </button>
+            </Link>
+            
+            <Link href="/pricing">
+              <button className={`px-4 py-2 rounded-lg text-sm font-bold transition ${plan === 'pro' ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-white'}`}>
+                {plan === 'pro' ? '⭐ Pro Member' : 'Upgrade Plan'}
+              </button>
+            </Link>
+            
+            <button onClick={handleLogout} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition">
+              Sign Out
+            </button>
           </div>
         </div>
       </nav>
@@ -58,8 +69,10 @@ export default function DashboardPage() {
         <h1 className="text-4xl font-bold mb-2">Welcome back!</h1>
         <p className="text-gray-400 text-lg mb-8">Here is your business overview.</p>
 
+        {/* Location Setup Component */}
         <LocationSetup />
 
+        {/* Profit Tracker Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6 shadow-xl">
             <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Total Revenue (Sold Items)</h2>
@@ -87,7 +100,7 @@ export default function DashboardPage() {
         <div className="grid md:grid-cols-2 gap-6">
           <Link href="/generate" className="block">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-blue-500 transition cursor-pointer group">
-              <span className="text-4xl mb-4 block"></span>
+              <span className="text-4xl mb-4 block">🚀</span>
               <h3 className="text-2xl font-bold mb-2 group-hover:text-blue-400 transition">Create Listing</h3>
               <p className="text-gray-400">Upload a photo and publish a new product.</p>
             </div>
