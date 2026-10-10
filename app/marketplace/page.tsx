@@ -54,7 +54,12 @@ export default function MarketplacePage() {
     const message = prompt(`Write a message to the seller about "${listing.product_name}":`);
     if (message && message.trim() !== "") {
       const { error } = await supabase.from("messages").insert({ listing_id: listing.id, sender_id: session.user.id, receiver_id: listing.user_id, content: message });
-      if (error) { toast.error("Failed to send message."); } else { toast.success("✅ Message sent successfully!"); }
+      if (error) { toast.error("Failed to send message."); } 
+      else { 
+        toast.success("✅ Message sent successfully!"); 
+        // NEW: Send Notification
+        await supabase.from('notifications').insert({ user_id: listing.user_id, type: 'message', content: `You received a new message about "${listing.product_name}"!` });
+      }
     }
   };
 
@@ -65,7 +70,12 @@ export default function MarketplacePage() {
     const offerAmount = prompt(`Enter your offer amount for "${listing.product_name}" (Current price: $${listing.sale_price}):`);
     if (offerAmount && !isNaN(parseFloat(offerAmount))) {
       const { error } = await supabase.from("offers").insert({ listing_id: listing.id, buyer_id: session.user.id, seller_id: listing.user_id, amount: parseFloat(offerAmount), status: 'pending' });
-      if (error) { toast.error("Failed to send offer."); } else { toast.success(`💰 Offer of $${offerAmount} sent to seller!`); }
+      if (error) { toast.error("Failed to send offer."); } 
+      else { 
+        toast.success(`💰 Offer of $${offerAmount} sent to seller!`); 
+        // NEW: Send Notification
+        await supabase.from('notifications').insert({ user_id: listing.user_id, type: 'offer', content: `You received an offer of $${offerAmount} for "${listing.product_name}"!` });
+      }
     }
   };
 
@@ -142,15 +152,12 @@ export default function MarketplacePage() {
                       <span className="text-3xl font-bold text-purple-400">${price}</span>
                     </div>
                     <p className="text-gray-400 text-sm mb-4 line-clamp-2 flex-grow border-t border-gray-800 pt-4">{descParts[1] || 'No description provided.'}</p>
-                    
-                    {/* NEW: View Seller Profile Link */}
                     <Link href={`/seller/${listing.user_id}`} className="text-xs text-gray-500 hover:text-blue-400 mb-4 flex items-center gap-1 transition">
                       👤 View Seller Profile & More Items
                     </Link>
-                    
                     <div className="flex gap-3 mt-auto">
                       <button onClick={() => handleMakeOffer(listing)} className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">
-                        💰 Make Offer
+                         Make Offer
                       </button>
                       <button onClick={() => handleContactSeller(listing)} className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">
                          Contact
