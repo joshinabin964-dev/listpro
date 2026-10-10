@@ -18,7 +18,6 @@ export default function DashboardPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/login"); return; }
 
-      // 1. Get Profile & Stats
       const { data: profile } = await supabase.from("profiles").select("plan, country, latitude, longitude").eq("id", session.user.id).single();
       if (profile) setPlan(profile.plan || "free");
 
@@ -30,7 +29,6 @@ export default function DashboardPage() {
         setStats({ revenue, profit });
       }
 
-      // 2. Fetch Unread Notifications
       const { data: notifs } = await supabase
         .from("notifications")
         .select("*")
@@ -104,6 +102,11 @@ export default function DashboardPage() {
                       ))
                     )}
                   </div>
+                  
+                  {/* NEW: View All Link at the bottom of the dropdown */}
+                  <Link href="/notifications" className="block p-3 text-center text-sm text-blue-400 hover:text-blue-300 font-bold border-t border-gray-800 hover:bg-gray-800 transition bg-gray-900/50">
+                    View All Notifications →
+                  </Link>
                 </div>
               )}
             </div>
@@ -175,7 +178,7 @@ export default function DashboardPage() {
           </Link>
           <Link href="/inquiries" className="block">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-yellow-500 transition cursor-pointer group">
-              <span className="text-4xl mb-4 block">📥</span>
+              <span className="text-4xl mb-4 block"></span>
               <h3 className="text-2xl font-bold mb-2 group-hover:text-yellow-400 transition">My Inbox</h3>
               <p className="text-gray-400">Read messages from interested buyers.</p>
             </div>
