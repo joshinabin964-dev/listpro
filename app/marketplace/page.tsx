@@ -57,8 +57,8 @@ export default function MarketplacePage() {
       if (error) { toast.error("Failed to send message."); } 
       else { 
         toast.success("✅ Message sent successfully!"); 
-        // NEW: Send Notification
-        await supabase.from('notifications').insert({ user_id: listing.user_id, type: 'message', content: `You received a new message about "${listing.product_name}"!` });
+        // Your awesome notification logic!
+        await supabase.from('notifications').insert({ user_id: listing.user_id, type: 'message', content: `You received a new message about "${listing.product_name}"!`, is_read: false });
       }
     }
   };
@@ -73,8 +73,8 @@ export default function MarketplacePage() {
       if (error) { toast.error("Failed to send offer."); } 
       else { 
         toast.success(`💰 Offer of $${offerAmount} sent to seller!`); 
-        // NEW: Send Notification
-        await supabase.from('notifications').insert({ user_id: listing.user_id, type: 'offer', content: `You received an offer of $${offerAmount} for "${listing.product_name}"!` });
+        // Your awesome notification logic!
+        await supabase.from('notifications').insert({ user_id: listing.user_id, type: 'offer', content: `You received an offer of $${offerAmount} for "${listing.product_name}"!`, is_read: false });
       }
     }
   };
@@ -116,7 +116,7 @@ export default function MarketplacePage() {
         )}
 
         <div className="flex flex-col md:flex-row gap-4 mb-12 bg-gray-900 p-4 rounded-2xl border border-gray-800">
-          <input type="text" placeholder=" Search products..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-grow p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500" />
+          <input type="text" placeholder="🔍 Search products..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-grow p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500" />
           <select value={filterCondition} onChange={(e) => setFilterCondition(e.target.value)} className="p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 w-full md:w-48">
             <option value="All">All Conditions</option>
             <option value="New">Brand New</option>
@@ -152,15 +152,18 @@ export default function MarketplacePage() {
                       <span className="text-3xl font-bold text-purple-400">${price}</span>
                     </div>
                     <p className="text-gray-400 text-sm mb-4 line-clamp-2 flex-grow border-t border-gray-800 pt-4">{descParts[1] || 'No description provided.'}</p>
-                    <Link href={`/seller/${listing.user_id}`} className="text-xs text-gray-500 hover:text-blue-400 mb-4 flex items-center gap-1 transition">
+                    
+                    {/* FIXED: Points to the /user/[id] page we just built */}
+                    <Link href={`/user/${listing.user_id}`} className="text-xs text-gray-500 hover:text-blue-400 mb-4 flex items-center gap-1 transition">
                       👤 View Seller Profile & More Items
                     </Link>
+                    
                     <div className="flex gap-3 mt-auto">
                       <button onClick={() => handleMakeOffer(listing)} className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">
-                         Make Offer
+                         💰 Make Offer
                       </button>
                       <button onClick={() => handleContactSeller(listing)} className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">
-                         Contact
+                         💬 Contact
                       </button>
                     </div>
                   </div>
