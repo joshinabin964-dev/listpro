@@ -19,14 +19,19 @@ export default function GeneratePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
+  // FIXED: Now it ADDS images instead of replacing them
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length > 0) {
-      // Limit to 5 photos
-      const selectedFiles = files.slice(0, 5); 
-      setImageFiles(selectedFiles);
+      const remainingSlots = 5 - imageFiles.length;
+      if (remainingSlots <= 0) {
+        toast.error("You can only upload up to 5 photos!");
+        return;
+      }
       
-      const previews = selectedFiles.map(file => {
+      const selectedFiles = files.slice(0, remainingSlots);
+
+      const newPreviews = selectedFiles.map(file => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
         return new Promise<string>((resolve) => {
@@ -34,7 +39,14 @@ export default function GeneratePage() {
         });
       });
 
-      Promise.all(previews).then(setImagePreviews);
+      Promise.all(newPreviews).then(newPreviewsResult => {
+        setImageFiles(prev => [...prev, ...selectedFiles]);
+        setImagePreviews(prev => [...prev, ...newPreviewsResult]);
+      });
+    }
+    // Reset input so you can select the same file again if needed
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
@@ -57,12 +69,10 @@ export default function GeneratePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { toast.error("Please log in first."); setLoading(false); return; }
 
-      // 1. Fetch the user's saved GPS location from their profile
       const { data: profile } = await supabase.from("profiles").select("latitude, longitude").eq("id", session.user.id).single();
       const userLat = profile?.latitude || null;
       const userLng = profile?.longitude || null;
 
-      // 2. Upload ALL Images
       const publicUrls: string[] = [];
       for (const file of imageFiles) {
         const fileExt = file.name.split('.').pop();
@@ -75,12 +85,11 @@ export default function GeneratePage() {
         publicUrls.push(publicUrl);
       }
 
-      // 3. Save Listing with GPS Coordinates and Image Array
       const { error: dbError } = await supabase.from('listings').insert({
         user_id: session.user.id,
         product_name: title,
-        image_url: publicUrls[0], // Keep the first image as the main thumbnail for the marketplace
-        image_urls: publicUrls,   // NEW: Save all images
+        image_url: publicUrls[0], 
+        image_urls: publicUrls,   
         ai_title: `${title} - ${condition}`,
         ai_bullets: ["High Quality", "Fast Shipping", "Satisfaction Guaranteed"],
         ai_description: description,
@@ -181,7 +190,7 @@ export default function GeneratePage() {
           </div>
 
           <button type="submit" disabled={loading} className="w-full p-4 bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold rounded-xl transition disabled:opacity-50 flex justify-center items-center gap-2">
-            {loading ? (<><span className="animate-spin">⚙️</span> Publishing...</>) : (<>{isPublic ? " Publish to Marketplace" : "💾 Save to Drafts"}</>)}
+            {loading ? (<><span className="animate-spin">⚙️</span> Publishing...</>) : (<>{isPublic ? "🌍 Publish to Marketplace" : "💾 Save to Drafts"}</>)}
           </button>
         </form>
       </div>
