@@ -1,6 +1,6 @@
 "use client";
 import { useState } from 'react';
-import { createClient } from '@/utils/supabase/client';
+import { supabase } from '@/lib/supabase';
 
 export default function LocationSetup() {
   const [country, setCountry] = useState('');
@@ -13,7 +13,6 @@ export default function LocationSetup() {
     }
 
     setStatus('Requesting location access...');
-    const supabase = createClient();
 
     if (!navigator.geolocation) {
       setStatus('Geolocation is not supported by your browser.');
@@ -33,7 +32,7 @@ export default function LocationSetup() {
           .eq('id', user.id);
 
         if (error) {
-          setStatus('Error saving data.');
+          setStatus('Error saving data: ' + error.message);
         } else {
           setStatus('Success! Your location is saved.');
         }
@@ -45,7 +44,7 @@ export default function LocationSetup() {
 
   return (
     <div className="bg-gray-800 p-6 rounded-lg mb-6 border border-gray-700">
-      <h2 className="text-xl font-bold mb-4 text-white"> Setup Your Location</h2>
+      <h2 className="text-xl font-bold mb-4 text-white">📍 Setup Your Location</h2>
       <p className="text-gray-400 mb-4 text-sm">Enter your country and allow location access to see nearby products.</p>
       
       <input
