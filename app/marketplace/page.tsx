@@ -5,20 +5,66 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
 
+// Magic math to calculate distance between two GPS points (in Kilometers)
+function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  var R = 6371; // Radius of the earth in km
+  var dLat = deg2rad(lat2 - lat1);
+  var dLon = deg2rad(lon2 - lon1);
+  var a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in km
+}
+function deg2rad(deg: number) {
+  return deg * (Math.PI / 180);
+}
+
 export default function MarketplacePage() {
   const [listings, setListings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCondition, setFilterCondition] = useState("All");
+  const [userLoc, setUserLoc] = useState<{lat: number, lng: number} | null>(null);
   const router = useRouter();
 
   useEffect(() => {
-    const fetchPublicListings = async () => {
+    const fetchMarketplaceData = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      let userLat = null;
+      let userLng = null;
+
+      // 1. Get User's Saved Location
+      if (session) {
+        const { data: profile } = await supabase.from("profiles").select("latitude, longitude").eq("id", session.user.id).single();
+        if (profile && profile.latitude && profile.longitude) {
+          userLat = profile.latitude;
+          userLng = profile.longitude;
+          setUserLoc({ lat: userLat, lng: userLng });
+        }
+      }
+
+      // 2. Fetch All Public Listings
       const { data, error } = await supabase.from("listings").select("*, profiles(email)").eq("is_public", true).order("created_at", { ascending: false });
-      if (!error) setListings(data || []);
+      
+      if (!error && data) {
+        let processedData = data;
+
+        // 3. Filter: Only keep items within 80km (approx 50 miles) IF user has location
+        if (userLat && userLng) {
+          processedData = data.filter((listing: any) => {
+            if (!listing.latitude || !listing.longitude) return false; // Skip items without location data
+            const dist = getDistanceFromLatLonInKm(userLat, userLng, listing.latitude, listing.longitude);
+            return dist <= 80; 
+          });
+        }
+        
+        setListings(processedData);
+      }
       setLoading(false);
     };
-    fetchPublicListings();
+    fetchMarketplaceData();
   }, []);
 
   const handleContactSeller = async (listing: any) => {
@@ -36,7 +82,7 @@ export default function MarketplacePage() {
     }
   };
 
-  // Filter Logic
+  // Filter Logic (Search + Condition)
   const filteredListings = listings.filter(listing => {
     const matchesSearch = listing.product_name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCondition = filterCondition === "All" || listing.ai_title?.includes(filterCondition);
@@ -58,12 +104,25 @@ export default function MarketplacePage() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">Public Marketplace</h1>
           <p className="text-xl text-gray-400">Discover unique items listed by the ListPro community.</p>
         </div>
 
-        {/* NEW: Search and Filter Bar */}
+        {/* NEW: Location Status Banner */}
+        {userLoc ? (
+          <div className="flex items-center justify-center gap-2 mb-8 text-green-400 bg-green-900/20 py-2 px-4 rounded-full border border-green-800 w-fit mx-auto">
+            <span>📍</span>
+            <span className="text-sm font-bold">Showing items within 50 miles of your location</span>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-2 mb-8 text-yellow-400 bg-yellow-900/20 py-2 px-4 rounded-full border border-yellow-800 w-fit mx-auto">
+            <span>⚠️</span>
+            <span className="text-sm font-bold">Location not set. <Link href="/dashboard" className="underline hover:text-yellow-300">Set location in Dashboard</Link> to see nearby items!</span>
+          </div>
+        )}
+
+        {/* Search and Filter Bar */}
         <div className="flex flex-col md:flex-row gap-4 mb-12 bg-gray-900 p-4 rounded-2xl border border-gray-800">
           <input 
             type="text" 
@@ -87,7 +146,7 @@ export default function MarketplacePage() {
 
         {filteredListings.length === 0 ? (
           <div className="text-center py-24 bg-gray-900/50 rounded-3xl border border-gray-800 border-dashed">
-            <p className="text-2xl text-gray-400 mb-6">No items found matching your search.</p>
+            <p className="text-2xl text-gray-400 mb-6">No items found matching your search nearby.</p>
             <Link href="/generate"><button className="px-8 py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl transition">Be the first to list an item!</button></Link>
           </div>
         ) : (
