@@ -10,17 +10,33 @@ export default function MyListingsPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [copyMenuOpen, setCopyMenuOpen] = useState<string | null>(null);
+  const [offersByListing, setOffersByListing] = useState<any>({});
+  const [viewingOffersFor, setViewingOffersFor] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
-    const fetchListings = async () => {
+    const fetchData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/login"); return; }
-      const { data, error } = await supabase.from("listings").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false });
-      if (!error) setListings(data || []);
+      
+      // 1. Fetch Listings
+      const { data: listingsData, error: listError } = await supabase.from("listings").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false });
+      if (!listError) setListings(listingsData || []);
+
+      // 2. Fetch Pending Offers for this seller
+      const { data: offersData } = await supabase.from("offers").select("*").eq("seller_id", session.user.id).eq("status", "pending");
+      
+      // Group offers by listing ID
+      const offersMap: any = {};
+      offersData?.forEach((offer: any) => {
+        if (!offersMap[offer.listing_id]) offersMap[offer.listing_id] = [];
+        offersMap[offer.listing_id].push(offer);
+      });
+      setOffersByListing(offersMap);
+
       setLoading(false);
     };
-    fetchListings();
+    fetchData();
   }, [router]);
 
   const handleDelete = async (id: string, imageUrl: string) => {
@@ -54,6 +70,30 @@ export default function MyListingsPage() {
     toast.success(`✅ Copied ${type.toUpperCase()} template!`);
   };
 
+  const handleOfferAction = async (offerId: string, action: 'accepted' | 'declined', listingId: string) => {
+    const { error } = await supabase.from("offers").update({ status: action }).eq("id", offerId);
+    if (!error) {
+      toast.success(`Offer ${action === 'accepted' ? 'Accepted' : 'Declined'}!`);
+      
+      // Update local state to remove the offer
+      setOffersByListing((prev: any) => {
+        const currentOffers = prev[listingId] || [];
+        const newOffers = currentOffers.filter((o: any) => o.id !== offerId);
+        const newState = { ...prev, [listingId]: newOffers };
+        if (newOffers.length === 0) delete newState[listingId];
+        return newState;
+      });
+
+      // If accepted, mark the listing as Pending so others know it's being sold
+      if (action === 'accepted') {
+        await supabase.from("listings").update({ status: 'Pending' }).eq("id", listingId);
+        setListings(prev => prev.map(l => l.id === listingId ? { ...l, status: 'Pending' } : l));
+      }
+    } else {
+      toast.error("Failed to update offer.");
+    }
+  };
+
   if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><p>Loading...</p></main>;
 
   return (
@@ -80,50 +120,87 @@ export default function MyListingsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {listings.map((listing) => (
-              <div key={listing.id} className="group bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-xl hover:shadow-2xl hover:border-gray-700 transition-all duration-300 flex flex-col">
-                <div className="relative aspect-[4/3] bg-gray-800 overflow-hidden">
-                  <img src={listing.image_url} alt={listing.product_name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                  <div className={`absolute top-4 right-4 backdrop-blur-md px-3 py-1 rounded-full border ${listing.status === 'Sold' ? 'bg-green-600/90 border-green-400' : 'bg-gray-950/80 border-gray-700'}`}>
-                    <span className="text-xs font-bold text-white uppercase">{listing.status}</span>
-                  </div>
-                  {listing.is_public && listing.status !== 'Sold' && (
-                    <div className="absolute top-4 left-4 bg-purple-600/90 backdrop-blur-md px-3 py-1 rounded-full border border-purple-400">
-                      <span className="text-xs font-bold text-white uppercase">🌍 Public</span>
+            {listings.map((listing) => {
+              const hasOffers = offersByListing[listing.id] && offersByListing[listing.id].length > 0;
+              const isViewingOffers = viewingOffersFor === listing.id;
+
+              return (
+                <div key={listing.id} className="group bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-xl hover:shadow-2xl hover:border-gray-700 transition-all duration-300 flex flex-col relative">
+                  <div className="relative aspect-[4/3] bg-gray-800 overflow-hidden">
+                    <img src={listing.image_url} alt={listing.product_name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    <div className={`absolute top-4 right-4 backdrop-blur-md px-3 py-1 rounded-full border ${listing.status === 'Sold' ? 'bg-green-600/90 border-green-400' : listing.status === 'Pending' ? 'bg-yellow-600/90 border-yellow-400' : 'bg-gray-950/80 border-gray-700'}`}>
+                      <span className="text-xs font-bold text-white uppercase">{listing.status}</span>
                     </div>
-                  )}
-                </div>
-                
-                <div className="p-6 flex-grow flex flex-col">
-                  <h3 className="text-xl font-bold text-white mb-2 line-clamp-1">{listing.ai_title?.split(' - ')[0] || listing.product_name}</h3>
-                  <div className="flex items-baseline gap-1 mb-4">
-                    <span className="text-3xl font-bold text-blue-400">${listing.sale_price}</span>
-                    {listing.cost_price > 0 && <span className="text-sm text-gray-500">(Cost: ${listing.cost_price})</span>}
-                  </div>
-                  
-                  <div className="relative mt-auto">
-                    {copyMenuOpen === listing.id && (
-                      <div className="absolute bottom-full left-0 mb-2 w-full bg-gray-800 border border-gray-700 rounded-xl shadow-2xl overflow-hidden z-10">
-                        <button onClick={() => handleCopy(listing, "standard")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition border-b border-gray-700">📋 Standard Copy</button>
-                        <button onClick={() => handleCopy(listing, "fb")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition border-b border-gray-700">📘 Facebook Marketplace</button>
-                        <button onClick={() => handleCopy(listing, "ebay")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition"> eBay Optimized</button>
+                    {listing.is_public && listing.status !== 'Sold' && (
+                      <div className="absolute top-4 left-4 bg-purple-600/90 backdrop-blur-md px-3 py-1 rounded-full border border-purple-400">
+                        <span className="text-xs font-bold text-white uppercase">🌍 Public</span>
                       </div>
                     )}
-                    <div className="flex gap-3">
-                      <button onClick={() => setCopyMenuOpen(copyMenuOpen === listing.id ? null : listing.id)} className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-bold transition border border-gray-700 flex justify-center items-center gap-2">
-                        📋 Copy For...
-                      </button>
-                      <Link href={`/my-listings/edit/${listing.id}`} className="flex-1">
-                        <button className="w-full px-4 py-3 bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white rounded-xl text-sm font-bold transition border border-blue-500/20">Edit</button>
-                      </Link>
-                      <button onClick={() => handleDelete(listing.id, listing.image_url)} disabled={deletingId === listing.id} className="px-4 py-3 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-xl text-sm font-bold transition border border-red-500/20">
-                        {deletingId === listing.id ? "..." : "🗑️"}
-                      </button>
+                    {/* NEW: Offer Badge */}
+                    {hasOffers && !isViewingOffers && (
+                      <div className="absolute bottom-4 right-4 bg-green-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse">
+                        💰 {offersByListing[listing.id].length} New Offer{offersByListing[listing.id].length > 1 ? 's' : ''}
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="p-6 flex-grow flex flex-col">
+                    <h3 className="text-xl font-bold text-white mb-2 line-clamp-1">{listing.ai_title?.split(' - ')[0] || listing.product_name}</h3>
+                    <div className="flex items-baseline gap-1 mb-4">
+                      <span className="text-3xl font-bold text-blue-400">${listing.sale_price}</span>
+                      {listing.cost_price > 0 && <span className="text-sm text-gray-500">(Cost: ${listing.cost_price})</span>}
+                    </div>
+                    
+                    <div className="relative mt-auto">
+                      {/* NEW: View Offers UI */}
+                      {isViewingOffers ? (
+                        <div className="space-y-3">
+                          <h4 className="text-sm font-bold text-green-400 mb-2">Incoming Offers:</h4>
+                          <div className="max-h-40 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                            {offersByListing[listing.id].map((offer: any) => (
+                              <div key={offer.id} className="bg-gray-800 p-3 rounded-lg border border-gray-700 flex justify-between items-center">
+                                <span className="font-bold text-white">${offer.amount}</span>
+                                <div className="flex gap-2">
+                                  <button onClick={() => handleOfferAction(offer.id, 'accepted', listing.id)} className="px-2 py-1 bg-green-600 hover:bg-green-500 text-white text-xs rounded font-bold">Accept</button>
+                                  <button onClick={() => handleOfferAction(offer.id, 'declined', listing.id)} className="px-2 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded font-bold">Decline</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <button onClick={() => setViewingOffersFor(null)} className="w-full mt-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-bold transition">Close Offers</button>
+                        </div>
+                      ) : (
+                        <>
+                          {copyMenuOpen === listing.id && (
+                            <div className="absolute bottom-full left-0 mb-2 w-full bg-gray-800 border border-gray-700 rounded-xl shadow-2xl overflow-hidden z-10">
+                              <button onClick={() => handleCopy(listing, "standard")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition border-b border-gray-700"> Standard Copy</button>
+                              <button onClick={() => handleCopy(listing, "fb")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition border-b border-gray-700">📘 Facebook Marketplace</button>
+                              <button onClick={() => handleCopy(listing, "ebay")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition"> eBay Optimized</button>
+                            </div>
+                          )}
+                          <div className="flex gap-3">
+                            {hasOffers && (
+                              <button onClick={() => setViewingOffersFor(listing.id)} className="flex-1 px-4 py-3 bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white rounded-xl text-sm font-bold transition border border-green-500/20 flex justify-center items-center gap-2">
+                                💰 View Offers
+                              </button>
+                            )}
+                            <button onClick={() => setCopyMenuOpen(copyMenuOpen === listing.id ? null : listing.id)} className={`flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-bold transition border border-gray-700 flex justify-center items-center gap-2 ${hasOffers ? '' : 'w-full'}`}>
+                               Copy For...
+                            </button>
+                            <Link href={`/my-listings/edit/${listing.id}`} className="flex-1">
+                              <button className="w-full px-4 py-3 bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white rounded-xl text-sm font-bold transition border border-blue-500/20">Edit</button>
+                            </Link>
+                            <button onClick={() => handleDelete(listing.id, listing.image_url)} disabled={deletingId === listing.id} className="px-4 py-3 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-xl text-sm font-bold transition border border-red-500/20">
+                              {deletingId === listing.id ? "..." : "🗑️"}
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
