@@ -13,26 +13,42 @@ export default function GeneratePage() {
   const [status, setStatus] = useState("Available");
   const [description, setDescription] = useState("");
   const [isPublic, setIsPublic] = useState(false);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => setImagePreview(reader.result as string);
-      reader.readAsDataURL(file);
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      // Limit to 5 photos
+      const selectedFiles = files.slice(0, 5); 
+      setImageFiles(selectedFiles);
+      
+      const previews = selectedFiles.map(file => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        return new Promise<string>((resolve) => {
+          reader.onloadend = () => resolve(reader.result as string);
+        });
+      });
+
+      Promise.all(previews).then(setImagePreviews);
     }
+  };
+
+  const removeImage = (index: number) => {
+    const newFiles = imageFiles.filter((_, i) => i !== index);
+    const newPreviews = imagePreviews.filter((_, i) => i !== index);
+    setImageFiles(newFiles);
+    setImagePreviews(newPreviews);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!imageFile || !title || !salePrice) {
-      toast.error("Please fill in Title, Sale Price, and upload a Photo.");
+    if (imageFiles.length === 0 || !title || !salePrice) {
+      toast.error("Please fill in Title, Sale Price, and upload at least one Photo.");
       return;
     }
     setLoading(true);
@@ -46,20 +62,25 @@ export default function GeneratePage() {
       const userLat = profile?.latitude || null;
       const userLng = profile?.longitude || null;
 
-      // 2. Upload Image
-      const fileExt = imageFile.name.split('.').pop();
-      const fileName = `${session.user.id}-${Date.now()}.${fileExt}`;
+      // 2. Upload ALL Images
+      const publicUrls: string[] = [];
+      for (const file of imageFiles) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${session.user.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage.from('product-images').upload(fileName, imageFile);
-      if (uploadError) { toast.error("Image upload failed."); setLoading(false); return; }
+        const { error: uploadError } = await supabase.storage.from('product-images').upload(fileName, file);
+        if (uploadError) { toast.error("Image upload failed."); setLoading(false); return; }
 
-      const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fileName);
+        const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fileName);
+        publicUrls.push(publicUrl);
+      }
 
-      // 3. Save Listing with GPS Coordinates
+      // 3. Save Listing with GPS Coordinates and Image Array
       const { error: dbError } = await supabase.from('listings').insert({
         user_id: session.user.id,
         product_name: title,
-        image_url: publicUrl,
+        image_url: publicUrls[0], // Keep the first image as the main thumbnail for the marketplace
+        image_urls: publicUrls,   // NEW: Save all images
         ai_title: `${title} - ${condition}`,
         ai_bullets: ["High Quality", "Fast Shipping", "Satisfaction Guaranteed"],
         ai_description: description,
@@ -67,8 +88,8 @@ export default function GeneratePage() {
         sale_price: parseFloat(salePrice) || 0,
         status: status,
         is_public: isPublic,
-        latitude: userLat, // NEW: Saving GPS
-        longitude: userLng // NEW: Saving GPS
+        latitude: userLat, 
+        longitude: userLng 
       });
 
       if (dbError) {
@@ -92,16 +113,25 @@ export default function GeneratePage() {
 
         <form onSubmit={handleSubmit} className="space-y-6 bg-gray-900 p-8 rounded-2xl border border-gray-800">
           <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Product Photo (Required)</label>
-            <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" className="hidden" />
-            {!imagePreview ? (
+            <label className="block text-sm font-medium text-gray-400 mb-2">Product Photos (Up to 5)</label>
+            <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" multiple className="hidden" />
+            {imagePreviews.length === 0 ? (
               <div onClick={() => fileInputRef.current?.click()} className="w-full h-48 border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-gray-800/50 transition">
-                <span className="text-4xl mb-2">📷</span><span className="text-gray-400 font-medium">Click to upload photo</span>
+                <span className="text-4xl mb-2">📷</span><span className="text-gray-400 font-medium">Click to upload photos</span>
               </div>
             ) : (
-              <div className="relative w-full h-64 bg-black rounded-xl overflow-hidden border border-gray-700">
-                <img src={imagePreview} alt="Preview" className="w-full h-full object-contain" />
-                <button type="button" onClick={() => { setImagePreview(null); setImageFile(null); }} className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-lg text-sm font-bold">Remove</button>
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-4">
+                  {imagePreviews.map((preview, index) => (
+                    <div key={index} className="relative w-full h-32 bg-black rounded-xl overflow-hidden border border-gray-700">
+                      <img src={preview} alt={`Preview ${index}`} className="w-full h-full object-contain" />
+                      <button type="button" onClick={() => removeImage(index)} className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded-lg text-xs font-bold">X</button>
+                    </div>
+                  ))}
+                </div>
+                {imageFiles.length < 5 && (
+                  <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full p-3 border-2 border-dashed border-gray-700 rounded-xl text-gray-400 hover:border-blue-500 hover:text-white transition">+ Add More Photos</button>
+                )}
               </div>
             )}
           </div>
@@ -151,7 +181,7 @@ export default function GeneratePage() {
           </div>
 
           <button type="submit" disabled={loading} className="w-full p-4 bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold rounded-xl transition disabled:opacity-50 flex justify-center items-center gap-2">
-            {loading ? (<><span className="animate-spin">⚙️</span> Publishing...</>) : (<>{isPublic ? "🌍 Publish to Marketplace" : "💾 Save to Drafts"}</>)}
+            {loading ? (<><span className="animate-spin">⚙️</span> Publishing...</>) : (<>{isPublic ? " Publish to Marketplace" : "💾 Save to Drafts"}</>)}
           </button>
         </form>
       </div>
