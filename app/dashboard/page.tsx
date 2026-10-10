@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import LocationSetup from "@/components/LocationSetup";
 
 export default function DashboardPage() {
   const [plan, setPlan] = useState("free");
@@ -15,7 +16,7 @@ export default function DashboardPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/login"); return; }
 
-      const { data: profile } = await supabase.from("profiles").select("plan").eq("id", session.user.id).single();
+      const { data: profile } = await supabase.from("profiles").select("plan, country, latitude, longitude").eq("id", session.user.id).single();
       if (profile) setPlan(profile.plan || "free");
 
       // Calculate Profit Stats
@@ -55,7 +56,10 @@ export default function DashboardPage() {
         <h1 className="text-4xl font-bold mb-2">Welcome back!</h1>
         <p className="text-gray-400 text-lg mb-8">Here is your business overview.</p>
 
-        {/* NEW: Profit Tracker Cards */}
+        {/* NEW: Location Setup Component */}
+        <LocationSetup />
+
+        {/* Profit Tracker Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6 shadow-xl">
             <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Total Revenue (Sold Items)</h2>
