@@ -7,7 +7,7 @@ import toast from "react-hot-toast";
 
 // Magic math to calculate distance between two GPS points (in Kilometers)
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
-  var R = 6371; // Radius of the earth in km
+  var R = 6371; 
   var dLat = deg2rad(lat2 - lat1);
   var dLon = deg2rad(lon2 - lon1);
   var a =
@@ -15,11 +15,9 @@ function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon
     Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
   var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // Distance in km
+  return R * c; 
 }
-function deg2rad(deg: number) {
-  return deg * (Math.PI / 180);
-}
+function deg2rad(deg: number) { return deg * (Math.PI / 180); }
 
 export default function MarketplacePage() {
   const [listings, setListings] = useState<any[]>([]);
@@ -35,7 +33,6 @@ export default function MarketplacePage() {
       let userLat = null;
       let userLng = null;
 
-      // 1. Get User's Saved Location
       if (session) {
         const { data: profile } = await supabase.from("profiles").select("latitude, longitude").eq("id", session.user.id).single();
         if (profile && profile.latitude && profile.longitude) {
@@ -45,21 +42,17 @@ export default function MarketplacePage() {
         }
       }
 
-      // 2. Fetch All Public Listings
       const { data, error } = await supabase.from("listings").select("*, profiles(email)").eq("is_public", true).order("created_at", { ascending: false });
       
       if (!error && data) {
         let processedData = data;
-
-        // 3. Filter: Only keep items within 80km (approx 50 miles) IF user has location
         if (userLat && userLng) {
           processedData = data.filter((listing: any) => {
-            if (!listing.latitude || !listing.longitude) return false; // Skip items without location data
+            if (!listing.latitude || !listing.longitude) return false; 
             const dist = getDistanceFromLatLonInKm(userLat, userLng, listing.latitude, listing.longitude);
             return dist <= 80; 
           });
         }
-        
         setListings(processedData);
       }
       setLoading(false);
@@ -82,7 +75,27 @@ export default function MarketplacePage() {
     }
   };
 
-  // Filter Logic (Search + Condition)
+  // NEW: Handle Make an Offer
+  const handleMakeOffer = async (listing: any) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { toast.error("Please log in to make an offer."); router.push("/login"); return; }
+    if (session.user.id === listing.user_id) { toast.error("You can't make an offer on your own item!"); return; }
+
+    const offerAmount = prompt(`Enter your offer amount for "${listing.product_name}" (Current price: $${listing.sale_price}):`);
+    if (offerAmount && !isNaN(parseFloat(offerAmount))) {
+      const { error } = await supabase.from("offers").insert({
+        listing_id: listing.id,
+        buyer_id: session.user.id,
+        seller_id: listing.user_id,
+        amount: parseFloat(offerAmount),
+        status: 'pending'
+      });
+      
+      if (error) { toast.error("Failed to send offer."); } 
+      else { toast.success(` Offer of $${offerAmount} sent to seller!`); }
+    }
+  };
+
   const filteredListings = listings.filter(listing => {
     const matchesSearch = listing.product_name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCondition = filterCondition === "All" || listing.ai_title?.includes(filterCondition);
@@ -109,7 +122,6 @@ export default function MarketplacePage() {
           <p className="text-xl text-gray-400">Discover unique items listed by the ListPro community.</p>
         </div>
 
-        {/* NEW: Location Status Banner */}
         {userLoc ? (
           <div className="flex items-center justify-center gap-2 mb-8 text-green-400 bg-green-900/20 py-2 px-4 rounded-full border border-green-800 w-fit mx-auto">
             <span>📍</span>
@@ -122,20 +134,9 @@ export default function MarketplacePage() {
           </div>
         )}
 
-        {/* Search and Filter Bar */}
         <div className="flex flex-col md:flex-row gap-4 mb-12 bg-gray-900 p-4 rounded-2xl border border-gray-800">
-          <input 
-            type="text" 
-            placeholder="🔍 Search products..." 
-            value={searchQuery} 
-            onChange={(e) => setSearchQuery(e.target.value)} 
-            className="flex-grow p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500"
-          />
-          <select 
-            value={filterCondition} 
-            onChange={(e) => setFilterCondition(e.target.value)} 
-            className="p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 w-full md:w-48"
-          >
+          <input type="text" placeholder="🔍 Search products..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-grow p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500" />
+          <select value={filterCondition} onChange={(e) => setFilterCondition(e.target.value)} className="p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 w-full md:w-48">
             <option value="All">All Conditions</option>
             <option value="New">Brand New</option>
             <option value="Used - Like New">Used - Like New</option>
@@ -170,9 +171,16 @@ export default function MarketplacePage() {
                       <span className="text-3xl font-bold text-purple-400">${price}</span>
                     </div>
                     <p className="text-gray-400 text-sm mb-6 line-clamp-2 flex-grow border-t border-gray-800 pt-4">{descParts[1] || 'No description provided.'}</p>
-                    <button onClick={() => handleContactSeller(listing)} className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">
-                      💬 Contact Seller
-                    </button>
+                    
+                    {/* NEW: Two buttons side by side */}
+                    <div className="flex gap-3 mt-auto">
+                      <button onClick={() => handleMakeOffer(listing)} className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">
+                        💰 Make Offer
+                      </button>
+                      <button onClick={() => handleContactSeller(listing)} className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">
+                         Contact
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
