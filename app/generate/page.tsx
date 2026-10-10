@@ -41,6 +41,12 @@ export default function GeneratePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { toast.error("Please log in first."); setLoading(false); return; }
 
+      // 1. Fetch the user's saved GPS location from their profile
+      const { data: profile } = await supabase.from("profiles").select("latitude, longitude").eq("id", session.user.id).single();
+      const userLat = profile?.latitude || null;
+      const userLng = profile?.longitude || null;
+
+      // 2. Upload Image
       const fileExt = imageFile.name.split('.').pop();
       const fileName = `${session.user.id}-${Date.now()}.${fileExt}`;
 
@@ -49,6 +55,7 @@ export default function GeneratePage() {
 
       const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fileName);
 
+      // 3. Save Listing with GPS Coordinates
       const { error: dbError } = await supabase.from('listings').insert({
         user_id: session.user.id,
         product_name: title,
@@ -59,7 +66,9 @@ export default function GeneratePage() {
         cost_price: parseFloat(costPrice) || 0,
         sale_price: parseFloat(salePrice) || 0,
         status: status,
-        is_public: isPublic
+        is_public: isPublic,
+        latitude: userLat, // NEW: Saving GPS
+        longitude: userLng // NEW: Saving GPS
       });
 
       if (dbError) {
@@ -87,7 +96,7 @@ export default function GeneratePage() {
             <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" className="hidden" />
             {!imagePreview ? (
               <div onClick={() => fileInputRef.current?.click()} className="w-full h-48 border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-gray-800/50 transition">
-                <span className="text-4xl mb-2"></span><span className="text-gray-400 font-medium">Click to upload photo</span>
+                <span className="text-4xl mb-2">📷</span><span className="text-gray-400 font-medium">Click to upload photo</span>
               </div>
             ) : (
               <div className="relative w-full h-64 bg-black rounded-xl overflow-hidden border border-gray-700">
