@@ -5,6 +5,42 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
 
+// THE GLOBAL CURRENCY MAP
+const currencyMap: Record<string, { symbol: string; code: string }> = {
+  "Nepal": { symbol: "Rs.", code: "NPR" }, "India": { symbol: "₹", code: "INR" },
+  "Pakistan": { symbol: "Rs.", code: "PKR" }, "Bangladesh": { symbol: "৳", code: "BDT" },
+  "USA": { symbol: "$", code: "USD" }, "United States": { symbol: "$", code: "USD" },
+  "UK": { symbol: "£", code: "GBP" }, "United Kingdom": { symbol: "£", code: "GBP" },
+  "Canada": { symbol: "C$", code: "CAD" }, "Australia": { symbol: "A$", code: "AUD" },
+  "New Zealand": { symbol: "NZ$", code: "NZD" }, "China": { symbol: "¥", code: "CNY" },
+  "Japan": { symbol: "¥", code: "JPY" }, "South Korea": { symbol: "₩", code: "KRW" },
+  "Singapore": { symbol: "S$", code: "SGD" }, "Malaysia": { symbol: "RM", code: "MYR" },
+  "Indonesia": { symbol: "Rp", code: "IDR" }, "Thailand": { symbol: "฿", code: "THB" },
+  "Vietnam": { symbol: "₫", code: "VND" }, "Philippines": { symbol: "", code: "PHP" },
+  "UAE": { symbol: "د.إ", code: "AED" }, "Saudi Arabia": { symbol: "﷼", code: "SAR" },
+  "Qatar": { symbol: "", code: "QAR" }, "Kuwait": { symbol: "د.ك", code: "KWD" },
+  "Oman": { symbol: "﷼", code: "OMR" }, "Israel": { symbol: "₪", code: "ILS" },
+  "Turkey": { symbol: "₺", code: "TRY" }, "Egypt": { symbol: "£", code: "EGP" },
+  "South Africa": { symbol: "R", code: "ZAR" }, "Nigeria": { symbol: "₦", code: "NGN" },
+  "Kenya": { symbol: "KSh", code: "KES" }, "Ghana": { symbol: "", code: "GHS" },
+  "Germany": { symbol: "€", code: "EUR" }, "France": { symbol: "€", code: "EUR" },
+  "Italy": { symbol: "€", code: "EUR" }, "Spain": { symbol: "€", code: "EUR" },
+  "Switzerland": { symbol: "CHF", code: "CHF" }, "Sweden": { symbol: "kr", code: "SEK" },
+  "Norway": { symbol: "kr", code: "NOK" }, "Denmark": { symbol: "kr", code: "DKK" },
+  "Poland": { symbol: "zł", code: "PLN" }, "Russia": { symbol: "₽", code: "RUB" },
+  "Ukraine": { symbol: "₴", code: "UAH" }, "Brazil": { symbol: "R$", code: "BRL" },
+  "Argentina": { symbol: "$", code: "ARS" }, "Mexico": { symbol: "$", code: "MXN" },
+  "Colombia": { symbol: "$", code: "COP" }, "Chile": { symbol: "$", code: "CLP" },
+  "Peru": { symbol: "S/.", code: "PEN" }, "default": { symbol: "$", code: "USD" }
+};
+
+// Helper to find the symbol from the saved code
+const getSymbol = (code: string) => {
+  if (!code) return '$';
+  const found = Object.values(currencyMap).find(c => c.code === code);
+  return found ? found.symbol : '$';
+};
+
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   var R = 6371; 
   var dLat = deg2rad(lat2 - lat1);
@@ -32,7 +68,6 @@ export default function MarketplacePage() {
         if (profile && profile.latitude && profile.longitude) { userLat = profile.latitude; userLng = profile.longitude; setUserLoc({ lat: userLat, lng: userLng }); }
       }
       
-      // UPDATED: Sort by is_pinned first, then by created_at
       const { data, error } = await supabase.from("listings").select("*, profiles(email)").eq("is_public", true).order("is_pinned", { ascending: false }).order("created_at", { ascending: false });
       
       if (!error && data) {
@@ -69,13 +104,13 @@ export default function MarketplacePage() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { toast.error("Please log in to make an offer."); router.push("/login"); return; }
     if (session.user.id === listing.user_id) { toast.error("You can't make an offer on your own item!"); return; }
-    const offerAmount = prompt(`Enter your offer amount for "${listing.product_name}" (Current price: $${listing.sale_price}):`);
+    const offerAmount = prompt(`Enter your offer amount for "${listing.product_name}" (Current price: ${getSymbol(listing.currency_code)}${listing.sale_price}):`);
     if (offerAmount && !isNaN(parseFloat(offerAmount))) {
       const { error } = await supabase.from("offers").insert({ listing_id: listing.id, buyer_id: session.user.id, seller_id: listing.user_id, amount: parseFloat(offerAmount), status: 'pending' });
       if (error) { toast.error("Failed to send offer."); } 
       else { 
-        toast.success(`💰 Offer of $${offerAmount} sent to seller!`); 
-        await supabase.from('notifications').insert({ user_id: listing.user_id, type: 'offer', content: `You received an offer of $${offerAmount} for "${listing.product_name}"!`, is_read: false });
+        toast.success(`💰 Offer of ${getSymbol(listing.currency_code)}${offerAmount} sent to seller!`); 
+        await supabase.from('notifications').insert({ user_id: listing.user_id, type: 'offer', content: `You received an offer of ${getSymbol(listing.currency_code)}${offerAmount} for "${listing.product_name}"!`, is_read: false });
       }
     }
   };
@@ -108,7 +143,7 @@ export default function MarketplacePage() {
 
         {userLoc ? (
           <div className="flex items-center justify-center gap-2 mb-8 text-green-400 bg-green-900/20 py-2 px-4 rounded-full border border-green-800 w-fit mx-auto">
-            <span></span><span className="text-sm font-bold">Showing items within 50 miles of your location</span>
+            <span>📍</span><span className="text-sm font-bold">Showing items within 50 miles of your location</span>
           </div>
         ) : (
           <div className="flex items-center justify-center gap-2 mb-8 text-yellow-400 bg-yellow-900/20 py-2 px-4 rounded-full border border-yellow-800 w-fit mx-auto">
@@ -119,11 +154,7 @@ export default function MarketplacePage() {
         <div className="flex flex-col md:flex-row gap-4 mb-12 bg-gray-900 p-4 rounded-2xl border border-gray-800">
           <input type="text" placeholder="🔍 Search products..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-grow p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500" />
           <select value={filterCondition} onChange={(e) => setFilterCondition(e.target.value)} className="p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 w-full md:w-48">
-            <option value="All">All Conditions</option>
-            <option value="New">Brand New</option>
-            <option value="Used - Like New">Used - Like New</option>
-            <option value="Used - Good">Used - Good</option>
-            <option value="Used - Fair">Used - Fair</option>
+            <option value="All">All Conditions</option><option value="New">Brand New</option><option value="Used - Like New">Used - Like New</option><option value="Used - Good">Used - Good</option><option value="Used - Fair">Used - Fair</option>
           </select>
         </div>
 
@@ -138,6 +169,7 @@ export default function MarketplacePage() {
               const titleParts = listing.ai_title?.split(' - ') || [listing.product_name, 'New'];
               const descParts = listing.ai_description?.split('\n\n') || ['', ''];
               const price = listing.sale_price || 0;
+              const symbol = getSymbol(listing.currency_code); // Get the correct symbol
               
               return (
                 <div key={listing.id} className={`group bg-gray-900 rounded-2xl border overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 flex flex-col ${listing.is_pinned ? 'border-yellow-500/50 ring-1 ring-yellow-500/20' : 'border-gray-800 hover:border-purple-500/50'}`}>
@@ -155,19 +187,16 @@ export default function MarketplacePage() {
                   <div className="p-6 flex-grow flex flex-col">
                     <h3 className="text-xl font-bold text-white mb-2 line-clamp-1">{titleParts[0]}</h3>
                     <div className="flex items-baseline gap-1 mb-4">
-                      <span className="text-3xl font-bold text-purple-400">${price}</span>
+                      {/* UPDATED: Dynamic Currency Symbol */}
+                      <span className="text-3xl font-bold text-purple-400">{symbol}{price}</span>
                     </div>
                     <p className="text-gray-400 text-sm mb-4 line-clamp-2 flex-grow border-t border-gray-800 pt-4">{descParts[1] || 'No description provided.'}</p>
                     <Link href={`/user/${listing.user_id}`} className="text-xs text-gray-500 hover:text-blue-400 mb-4 flex items-center gap-1 transition">
                       👤 View Seller Profile & More Items
                     </Link>
                     <div className="flex gap-3 mt-auto">
-                      <button onClick={() => handleMakeOffer(listing)} className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">
-                         💰 Make Offer
-                      </button>
-                      <button onClick={() => handleContactSeller(listing)} className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">
-                         💬 Contact
-                      </button>
+                      <button onClick={() => handleMakeOffer(listing)} className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">💰 Make Offer</button>
+                      <button onClick={() => handleContactSeller(listing)} className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">💬 Contact</button>
                     </div>
                   </div>
                 </div>

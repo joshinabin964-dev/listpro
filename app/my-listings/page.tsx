@@ -5,6 +5,41 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
 
+// THE GLOBAL CURRENCY MAP
+const currencyMap: Record<string, { symbol: string; code: string }> = {
+  "Nepal": { symbol: "Rs.", code: "NPR" }, "India": { symbol: "₹", code: "INR" },
+  "Pakistan": { symbol: "Rs.", code: "PKR" }, "Bangladesh": { symbol: "৳", code: "BDT" },
+  "USA": { symbol: "$", code: "USD" }, "United States": { symbol: "$", code: "USD" },
+  "UK": { symbol: "£", code: "GBP" }, "United Kingdom": { symbol: "£", code: "GBP" },
+  "Canada": { symbol: "C$", code: "CAD" }, "Australia": { symbol: "A$", code: "AUD" },
+  "New Zealand": { symbol: "NZ$", code: "NZD" }, "China": { symbol: "¥", code: "CNY" },
+  "Japan": { symbol: "¥", code: "JPY" }, "South Korea": { symbol: "₩", code: "KRW" },
+  "Singapore": { symbol: "S$", code: "SGD" }, "Malaysia": { symbol: "RM", code: "MYR" },
+  "Indonesia": { symbol: "Rp", code: "IDR" }, "Thailand": { symbol: "฿", code: "THB" },
+  "Vietnam": { symbol: "₫", code: "VND" }, "Philippines": { symbol: "₱", code: "PHP" },
+  "UAE": { symbol: "د.إ", code: "AED" }, "Saudi Arabia": { symbol: "", code: "SAR" },
+  "Qatar": { symbol: "﷼", code: "QAR" }, "Kuwait": { symbol: "د.ك", code: "KWD" },
+  "Oman": { symbol: "﷼", code: "OMR" }, "Israel": { symbol: "₪", code: "ILS" },
+  "Turkey": { symbol: "₺", code: "TRY" }, "Egypt": { symbol: "£", code: "EGP" },
+  "South Africa": { symbol: "R", code: "ZAR" }, "Nigeria": { symbol: "₦", code: "NGN" },
+  "Kenya": { symbol: "KSh", code: "KES" }, "Ghana": { symbol: "₵", code: "GHS" },
+  "Germany": { symbol: "€", code: "EUR" }, "France": { symbol: "€", code: "EUR" },
+  "Italy": { symbol: "€", code: "EUR" }, "Spain": { symbol: "€", code: "EUR" },
+  "Switzerland": { symbol: "CHF", code: "CHF" }, "Sweden": { symbol: "kr", code: "SEK" },
+  "Norway": { symbol: "kr", code: "NOK" }, "Denmark": { symbol: "kr", code: "DKK" },
+  "Poland": { symbol: "zł", code: "PLN" }, "Russia": { symbol: "₽", code: "RUB" },
+  "Ukraine": { symbol: "₴", code: "UAH" }, "Brazil": { symbol: "R$", code: "BRL" },
+  "Argentina": { symbol: "$", code: "ARS" }, "Mexico": { symbol: "$", code: "MXN" },
+  "Colombia": { symbol: "$", code: "COP" }, "Chile": { symbol: "$", code: "CLP" },
+  "Peru": { symbol: "S/.", code: "PEN" }, "default": { symbol: "$", code: "USD" }
+};
+
+const getSymbol = (code: string) => {
+  if (!code) return '$';
+  const found = Object.values(currencyMap).find(c => c.code === code);
+  return found ? found.symbol : '$';
+};
+
 export default function MyListingsPage() {
   const [listings, setListings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -12,7 +47,7 @@ export default function MyListingsPage() {
   const [copyMenuOpen, setCopyMenuOpen] = useState<string | null>(null);
   const [offersByListing, setOffersByListing] = useState<any>({});
   const [viewingOffersFor, setViewingOffersFor] = useState<string | null>(null);
-  const [userPlan, setUserPlan] = useState("free"); // NEW: Track plan
+  const [userPlan, setUserPlan] = useState("free");
   const router = useRouter();
 
   useEffect(() => {
@@ -20,7 +55,6 @@ export default function MyListingsPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/login"); return; }
       
-      // Get Plan
       const { data: profile } = await supabase.from("profiles").select("plan").eq("id", session.user.id).single();
       if (profile) setUserPlan(profile.plan || "free");
 
@@ -53,17 +87,12 @@ export default function MyListingsPage() {
     setDeletingId(null);
   };
 
-  // NEW: Handle Pinning
   const handlePin = async (id: string, currentPinStatus: boolean) => {
-    if (userPlan !== 'pro') {
-      toast.error("🔒 Pin to Top is a Pro feature! Upgrade to use this.");
-      router.push("/pricing");
-      return;
-    }
+    if (userPlan !== 'pro') { toast.error("🔒 Pin to Top is a Pro feature! Upgrade to use this."); router.push("/pricing"); return; }
     const { error } = await supabase.from("listings").update({ is_pinned: !currentPinStatus }).eq("id", id);
     if (!error) {
       setListings(listings.map(l => l.id === id ? { ...l, is_pinned: !currentPinStatus } : l));
-      toast.success(!currentPinStatus ? "📌 Pinned to top!" : "Unpinned.");
+      toast.success(!currentPinStatus ? " Pinned to top!" : "Unpinned.");
     }
   };
 
@@ -71,11 +100,12 @@ export default function MyListingsPage() {
     const title = listing.ai_title?.split(' - ')[0] || listing.product_name;
     const condition = listing.ai_title?.split(' - ')[1] || 'New';
     const price = listing.sale_price || 0;
+    const symbol = getSymbol(listing.currency_code);
     const desc = listing.ai_description || 'No description provided.';
     let textToCopy = "";
-    if (type === "standard") textToCopy = `${title}\nPrice: $${price}\nCondition: ${condition}\n\n${desc}`;
-    else if (type === "fb") textToCopy = ` FOR SALE: ${title}\n💰 Price: $${price} (Firm)\n Condition: ${condition}\n\n${desc}\n\n📩 DM me if interested!`;
-    else if (type === "ebay") textToCopy = `Title: ${title} - ${condition}\nPrice: $${price}\n\nDescription:\n${desc}`;
+    if (type === "standard") textToCopy = `${title}\nPrice: ${symbol}${price}\nCondition: ${condition}\n\n${desc}`;
+    else if (type === "fb") textToCopy = `🔥 FOR SALE: ${title}\n💰 Price: ${symbol}${price} (Firm)\n📍 Condition: ${condition}\n\n${desc}\n\n📩 DM me if interested!`;
+    else if (type === "ebay") textToCopy = `Title: ${title} - ${condition}\nPrice: ${symbol}${price}\n\nDescription:\n${desc}`;
     navigator.clipboard.writeText(textToCopy);
     setCopyMenuOpen(null);
     toast.success(`✅ Copied ${type.toUpperCase()} template!`);
@@ -128,6 +158,7 @@ export default function MyListingsPage() {
             {listings.map((listing) => {
               const hasOffers = offersByListing[listing.id] && offersByListing[listing.id].length > 0;
               const isViewingOffers = viewingOffersFor === listing.id;
+              const symbol = getSymbol(listing.currency_code); // Get the correct symbol
 
               return (
                 <div key={listing.id} className={`group bg-gray-900 rounded-2xl border overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 flex flex-col relative ${listing.is_pinned ? 'border-yellow-500/50 ring-1 ring-yellow-500/20' : 'border-gray-800 hover:border-gray-700'}`}>
@@ -138,12 +169,12 @@ export default function MyListingsPage() {
                     </div>
                     {listing.is_pinned && (
                       <div className="absolute top-4 left-4 bg-yellow-500/90 backdrop-blur-md px-3 py-1 rounded-full border border-yellow-300">
-                        <span className="text-xs font-bold text-white uppercase"> Pinned</span>
+                        <span className="text-xs font-bold text-white uppercase">📌 Pinned</span>
                       </div>
                     )}
                     {listing.is_public && listing.status !== 'Sold' && !listing.is_pinned && (
                       <div className="absolute top-4 left-4 bg-purple-600/90 backdrop-blur-md px-3 py-1 rounded-full border border-purple-400">
-                        <span className="text-xs font-bold text-white uppercase">🌍 Public</span>
+                        <span className="text-xs font-bold text-white uppercase"> Public</span>
                       </div>
                     )}
                     {hasOffers && !isViewingOffers && (
@@ -156,8 +187,9 @@ export default function MyListingsPage() {
                   <div className="p-6 flex-grow flex flex-col">
                     <h3 className="text-xl font-bold text-white mb-2 line-clamp-1">{listing.ai_title?.split(' - ')[0] || listing.product_name}</h3>
                     <div className="flex items-baseline gap-1 mb-4">
-                      <span className="text-3xl font-bold text-blue-400">${listing.sale_price}</span>
-                      {listing.cost_price > 0 && <span className="text-sm text-gray-500">(Cost: ${listing.cost_price})</span>}
+                      {/* UPDATED: Dynamic Currency Symbols */}
+                      <span className="text-3xl font-bold text-blue-400">{symbol}{listing.sale_price}</span>
+                      {listing.cost_price > 0 && <span className="text-sm text-gray-500">(Cost: {symbol}{listing.cost_price})</span>}
                     </div>
                     
                     <div className="relative mt-auto">
@@ -167,7 +199,7 @@ export default function MyListingsPage() {
                           <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
                             {offersByListing[listing.id].map((offer: any) => (
                               <div key={offer.id} className="bg-gray-800 p-3 rounded-lg border border-gray-700 flex justify-between items-center">
-                                <span className="font-bold text-white">${offer.amount}</span>
+                                <span className="font-bold text-white">{symbol}{offer.amount}</span>
                                 <div className="flex gap-2">
                                   <button onClick={() => handleOfferAction(offer.id, 'accepted', listing.id)} className="px-2 py-1 bg-green-600 hover:bg-green-500 text-white text-xs rounded font-bold">Accept</button>
                                   <button onClick={() => handleOfferAction(offer.id, 'declined', listing.id)} className="px-2 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded font-bold">Decline</button>
@@ -183,23 +215,15 @@ export default function MyListingsPage() {
                             <div className="absolute bottom-full left-0 mb-2 w-full bg-gray-800 border border-gray-700 rounded-xl shadow-2xl overflow-hidden z-10">
                               <button onClick={() => handleCopy(listing, "standard")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition border-b border-gray-700"> Standard Copy</button>
                               <button onClick={() => handleCopy(listing, "fb")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition border-b border-gray-700">📘 Facebook Marketplace</button>
-                              <button onClick={() => handleCopy(listing, "ebay")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition"> eBay Optimized</button>
+                              <button onClick={() => handleCopy(listing, "ebay")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition">🛒 eBay Optimized</button>
                             </div>
                           )}
                           <div className="flex gap-2 flex-wrap">
-                            {/* NEW: Pin Button */}
-                            <button onClick={() => handlePin(listing.id, listing.is_pinned)} className={`px-3 py-3 rounded-xl text-sm font-bold transition border flex justify-center items-center gap-1 ${listing.is_pinned ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20 hover:bg-yellow-500 hover:text-white' : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white'}`}>
-                              📌
-                            </button>
-                            
+                            <button onClick={() => handlePin(listing.id, listing.is_pinned)} className={`px-3 py-3 rounded-xl text-sm font-bold transition border flex justify-center items-center gap-1 ${listing.is_pinned ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20 hover:bg-yellow-500 hover:text-white' : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white'}`}></button>
                             {hasOffers && (
-                              <button onClick={() => setViewingOffersFor(listing.id)} className="flex-1 px-4 py-3 bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white rounded-xl text-sm font-bold transition border border-green-500/20 flex justify-center items-center gap-2">
-                                💰 View Offers
-                              </button>
+                              <button onClick={() => setViewingOffersFor(listing.id)} className="flex-1 px-4 py-3 bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white rounded-xl text-sm font-bold transition border border-green-500/20 flex justify-center items-center gap-2">💰 View Offers</button>
                             )}
-                            <button onClick={() => setCopyMenuOpen(copyMenuOpen === listing.id ? null : listing.id)} className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-bold transition border border-gray-700 flex justify-center items-center gap-2">
-                               Copy
-                            </button>
+                            <button onClick={() => setCopyMenuOpen(copyMenuOpen === listing.id ? null : listing.id)} className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-bold transition border border-gray-700 flex justify-center items-center gap-2">📋 Copy</button>
                             <button onClick={() => handleDelete(listing.id, listing.image_url)} disabled={deletingId === listing.id} className="px-4 py-3 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-xl text-sm font-bold transition border border-red-500/20">
                               {deletingId === listing.id ? "..." : "🗑️"}
                             </button>
