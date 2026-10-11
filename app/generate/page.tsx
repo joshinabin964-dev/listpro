@@ -1,9 +1,23 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import toast from "react-hot-toast";
+
+// THE CURRENCY MAP: Add more countries here as you grow!
+const currencyMap: Record<string, { symbol: string; code: string }> = {
+  "Nepal": { symbol: "Rs.", code: "NPR" },
+  "India": { symbol: "₹", code: "INR" },
+  "USA": { symbol: "$", code: "USD" },
+  "United States": { symbol: "$", code: "USD" },
+  "UK": { symbol: "£", code: "GBP" },
+  "United Kingdom": { symbol: "£", code: "GBP" },
+  "Canada": { symbol: "C$", code: "CAD" },
+  "Australia": { symbol: "A$", code: "AUD" },
+  "Europe": { symbol: "€", code: "EUR" },
+  "default": { symbol: "$", code: "USD" }
+};
 
 export default function GeneratePage() {
   const [title, setTitle] = useState("");
@@ -16,8 +30,23 @@ export default function GeneratePage() {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [currency, setCurrency] = useState(currencyMap["default"]); // NEW: Currency State
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+
+  // NEW: Fetch user's country and set currency on load
+  useEffect(() => {
+    const getUserCurrency = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data: profile } = await supabase.from("profiles").select("country").eq("id", session.user.id).single();
+        if (profile && profile.country && currencyMap[profile.country]) {
+          setCurrency(currencyMap[profile.country]);
+        }
+      }
+    };
+    getUserCurrency();
+  }, []);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -55,18 +84,17 @@ export default function GeneratePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { toast.error("Please log in first."); setLoading(false); return; }
 
-      // 1. CHECK LIMIT FOR FREE USERS
       const { data: profile } = await supabase.from("profiles").select("plan").eq("id", session.user.id).single();
       const { count } = await supabase.from("listings").select("*", { count: 'exact', head: true }).eq("user_id", session.user.id).eq("status", "Available");
       
       if (profile?.plan === 'free' && count >= 3) {
-        toast.error(" Free Plan Limit Reached! Upgrade to Pro for unlimited listings.");
+        toast.error("🔒 Free Plan Limit Reached! Upgrade to Pro for unlimited listings.");
         setLoading(false);
-        router.push("/pricing"); // Send them to upgrade page
+        router.push("/pricing");
         return;
       }
 
-      const { data: userLoc } = await supabase.from("profiles").select("latitude, longitude").eq("id", session.user.id).single();
+      const { data: userLoc } = await supabase.from("profiles").select("latitude, longitude, country").eq("id", session.user.id).single();
       const userLat = userLoc?.latitude || null;
       const userLng = userLoc?.longitude || null;
 
@@ -84,7 +112,8 @@ export default function GeneratePage() {
         user_id: session.user.id, product_name: title, image_url: publicUrls[0], image_urls: publicUrls,
         ai_title: `${title} - ${condition}`, ai_bullets: ["High Quality", "Fast Shipping", "Satisfaction Guaranteed"],
         ai_description: description, cost_price: parseFloat(costPrice) || 0, sale_price: parseFloat(salePrice) || 0,
-        status: status, is_public: isPublic, latitude: userLat, longitude: userLng, is_pinned: false
+        status: status, is_public: isPublic, latitude: userLat, longitude: userLng, is_pinned: false,
+        currency_code: currency.code // NEW: Save the currency code to the database!
       });
 
       if (dbError) { toast.error("Error saving listing."); } 
@@ -98,7 +127,7 @@ export default function GeneratePage() {
       <div className="max-w-2xl mx-auto">
         <Link href="/my-listings" className="mb-8 text-gray-400 hover:text-white flex items-center gap-2 w-fit">← Back</Link>
         <h1 className="text-3xl font-bold mb-2 text-blue-500">Create New Listing</h1>
-        <p className="text-gray-400 mb-8">Fill in the details to track and list your product.</p>
+        <p className="text-gray-400 mb-8">List your product in <span className="text-white font-bold">{currency.code}</span> ({currency.symbol}).</p>
 
         <form onSubmit={handleSubmit} className="space-y-6 bg-gray-900 p-8 rounded-2xl border border-gray-800">
           <div>
@@ -132,11 +161,13 @@ export default function GeneratePage() {
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Sale Price ($) *</label>
+              {/* UPDATED: Dynamic Currency Symbol */}
+              <label className="block text-sm font-medium text-gray-400 mb-2">Sale Price ({currency.symbol}) *</label>
               <input type="number" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg" placeholder="0.00" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Cost Price ($)</label>
+              {/* UPDATED: Dynamic Currency Symbol */}
+              <label className="block text-sm font-medium text-gray-400 mb-2">Cost Price ({currency.symbol})</label>
               <input type="number" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-green-500 text-lg" placeholder="0.00" />
             </div>
             <div>
