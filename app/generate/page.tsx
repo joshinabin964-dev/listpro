@@ -5,17 +5,76 @@ import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import toast from "react-hot-toast";
 
-// THE CURRENCY MAP: Add more countries here as you grow!
+// THE GLOBAL CURRENCY MAP (100+ Countries)
 const currencyMap: Record<string, { symbol: string; code: string }> = {
-  "Nepal": { symbol: "Rs.", code: "NPR" },
-  "India": { symbol: "₹", code: "INR" },
-  "USA": { symbol: "$", code: "USD" },
-  "United States": { symbol: "$", code: "USD" },
-  "UK": { symbol: "£", code: "GBP" },
-  "United Kingdom": { symbol: "£", code: "GBP" },
-  "Canada": { symbol: "C$", code: "CAD" },
-  "Australia": { symbol: "A$", code: "AUD" },
-  "Europe": { symbol: "€", code: "EUR" },
+  // Major Global
+  "USA": { symbol: "$", code: "USD" }, "United States": { symbol: "$", code: "USD" },
+  "UK": { symbol: "£", code: "GBP" }, "United Kingdom": { symbol: "£", code: "GBP" },
+  "Canada": { symbol: "C$", code: "CAD" }, "Australia": { symbol: "A$", code: "AUD" },
+  "New Zealand": { symbol: "NZ$", code: "NZD" }, "China": { symbol: "¥", code: "CNY" },
+  "Japan": { symbol: "¥", code: "JPY" }, "South Korea": { symbol: "₩", code: "KRW" },
+  
+  // South Asia
+  "Nepal": { symbol: "Rs.", code: "NPR" }, "India": { symbol: "₹", code: "INR" },
+  "Pakistan": { symbol: "Rs.", code: "PKR" }, "Bangladesh": { symbol: "৳", code: "BDT" },
+  "Sri Lanka": { symbol: "Rs.", code: "LKR" }, "Afghanistan": { symbol: "؋", code: "AFN" },
+  
+  // Southeast Asia & Pacific
+  "Singapore": { symbol: "S$", code: "SGD" }, "Malaysia": { symbol: "RM", code: "MYR" },
+  "Indonesia": { symbol: "Rp", code: "IDR" }, "Thailand": { symbol: "฿", code: "THB" },
+  "Vietnam": { symbol: "₫", code: "VND" }, "Philippines": { symbol: "₱", code: "PHP" },
+  "Myanmar": { symbol: "K", code: "MMK" }, "Cambodia": { symbol: "៛", code: "KHR" },
+  "Laos": { symbol: "₭", code: "LAK" }, "Mongolia": { symbol: "₮", code: "MNT" },
+  "Papua New Guinea": { symbol: "K", code: "PGK" }, "Fiji": { symbol: "FJ$", code: "FJD" },
+
+  // Middle East & North Africa (MENA)
+  "UAE": { symbol: "د.إ", code: "AED" }, "Saudi Arabia": { symbol: "﷼", code: "SAR" },
+  "Qatar": { symbol: "﷼", code: "QAR" }, "Kuwait": { symbol: "د.ك", code: "KWD" },
+  "Oman": { symbol: "﷼", code: "OMR" }, "Bahrain": { symbol: ".د.ب", code: "BHD" },
+  "Israel": { symbol: "₪", code: "ILS" }, "Turkey": { symbol: "₺", code: "TRY" },
+  "Egypt": { symbol: "£", code: "EGP" }, "Morocco": { symbol: "د.م.", code: "MAD" },
+  "Algeria": { symbol: "د.ج", code: "DZD" }, "Tunisia": { symbol: "د.ت", code: "TND" },
+  "Jordan": { symbol: "د.ا", code: "JOD" }, "Lebanon": { symbol: "ل.ل", code: "LBP" },
+  "Iraq": { symbol: "ع.د", code: "IQD" }, "Iran": { symbol: "﷼", code: "IRR" },
+
+  // Sub-Saharan Africa (Emerging Markets)
+  "South Africa": { symbol: "R", code: "ZAR" }, "Nigeria": { symbol: "₦", code: "NGN" },
+  "Kenya": { symbol: "KSh", code: "KES" }, "Ghana": { symbol: "₵", code: "GHS" },
+  "Ethiopia": { symbol: "Br", code: "ETB" }, "Tanzania": { symbol: "TSh", code: "TZS" },
+  "Uganda": { symbol: "USh", code: "UGX" }, "Rwanda": { symbol: "RF", code: "RWF" },
+  "Senegal": { symbol: "CFA", code: "XOF" }, "Cameroon": { symbol: "FCFA", code: "XAF" },
+  "Ivory Coast": { symbol: "CFA", code: "XOF" }, "Madagascar": { symbol: "Ar", code: "MGA" },
+
+  // Europe (Non-Euro & Eastern)
+  "Switzerland": { symbol: "CHF", code: "CHF" }, "Sweden": { symbol: "kr", code: "SEK" },
+  "Norway": { symbol: "kr", code: "NOK" }, "Denmark": { symbol: "kr", code: "DKK" },
+  "Poland": { symbol: "zł", code: "PLN" }, "Russia": { symbol: "₽", code: "RUB" },
+  "Ukraine": { symbol: "₴", code: "UAH" }, "Romania": { symbol: "lei", code: "RON" },
+  "Bulgaria": { symbol: "лв", code: "BGN" }, "Hungary": { symbol: "Ft", code: "HUF" },
+  "Czech Republic": { symbol: "Kč", code: "CZK" }, "Serbia": { symbol: "din", code: "RSD" },
+  "Iceland": { symbol: "kr", code: "ISK" },
+
+  // Eurozone
+  "Germany": { symbol: "€", code: "EUR" }, "France": { symbol: "€", code: "EUR" },
+  "Italy": { symbol: "€", code: "EUR" }, "Spain": { symbol: "€", code: "EUR" },
+  "Netherlands": { symbol: "€", code: "EUR" }, "Belgium": { symbol: "€", code: "EUR" },
+  "Austria": { symbol: "€", code: "EUR" }, "Portugal": { symbol: "€", code: "EUR" },
+  "Greece": { symbol: "€", code: "EUR" }, "Finland": { symbol: "€", code: "EUR" },
+
+  // Central Asia & Caucasus
+  "Kazakhstan": { symbol: "₸", code: "KZT" }, "Uzbekistan": { symbol: "лв", code: "UZS" },
+  "Azerbaijan": { symbol: "₼", code: "AZN" }, "Georgia": { symbol: "₾", code: "GEL" },
+  "Armenia": { symbol: "֏", code: "AMD" },
+
+  // South America & Caribbean
+  "Brazil": { symbol: "R$", code: "BRL" }, "Argentina": { symbol: "$", code: "ARS" },
+  "Mexico": { symbol: "$", code: "MXN" }, "Colombia": { symbol: "$", code: "COP" },
+  "Chile": { symbol: "$", code: "CLP" }, "Peru": { symbol: "S/.", code: "PEN" },
+  "Venezuela": { symbol: "Bs.", code: "VES" }, "Bolivia": { symbol: "Bs.", code: "BOB" },
+  "Paraguay": { symbol: "₲", code: "PYG" }, "Uruguay": { symbol: "$U", code: "UYU" },
+  "Ecuador": { symbol: "$", code: "USD" }, "Dominican Republic": { symbol: "RD$", code: "DOP" },
+  "Jamaica": { symbol: "J$", code: "JMD" }, "Trinidad and Tobago": { symbol: "TT$", code: "TTD" },
+
   "default": { symbol: "$", code: "USD" }
 };
 
@@ -30,18 +89,26 @@ export default function GeneratePage() {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [currency, setCurrency] = useState(currencyMap["default"]); // NEW: Currency State
+  const [currency, setCurrency] = useState(currencyMap["default"]); 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  // NEW: Fetch user's country and set currency on load
   useEffect(() => {
     const getUserCurrency = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         const { data: profile } = await supabase.from("profiles").select("country").eq("id", session.user.id).single();
-        if (profile && profile.country && currencyMap[profile.country]) {
-          setCurrency(currencyMap[profile.country]);
+        if (profile && profile.country) {
+          // BULLETPROOF MATCHING: Removes spaces and forces lowercase
+          const userCountry = profile.country.trim().toLowerCase();
+          
+          const matchedKey = Object.keys(currencyMap).find(
+            key => key.toLowerCase() === userCountry
+          );
+          
+          if (matchedKey) {
+            setCurrency(currencyMap[matchedKey]);
+          }
         }
       }
     };
@@ -88,7 +155,7 @@ export default function GeneratePage() {
       const { count } = await supabase.from("listings").select("*", { count: 'exact', head: true }).eq("user_id", session.user.id).eq("status", "Available");
       
       if (profile?.plan === 'free' && count >= 3) {
-        toast.error("🔒 Free Plan Limit Reached! Upgrade to Pro for unlimited listings.");
+        toast.error(" Free Plan Limit Reached! Upgrade to Pro for unlimited listings.");
         setLoading(false);
         router.push("/pricing");
         return;
@@ -113,7 +180,7 @@ export default function GeneratePage() {
         ai_title: `${title} - ${condition}`, ai_bullets: ["High Quality", "Fast Shipping", "Satisfaction Guaranteed"],
         ai_description: description, cost_price: parseFloat(costPrice) || 0, sale_price: parseFloat(salePrice) || 0,
         status: status, is_public: isPublic, latitude: userLat, longitude: userLng, is_pinned: false,
-        currency_code: currency.code // NEW: Save the currency code to the database!
+        currency_code: currency.code 
       });
 
       if (dbError) { toast.error("Error saving listing."); } 
@@ -161,12 +228,10 @@ export default function GeneratePage() {
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              {/* UPDATED: Dynamic Currency Symbol */}
               <label className="block text-sm font-medium text-gray-400 mb-2">Sale Price ({currency.symbol}) *</label>
               <input type="number" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg" placeholder="0.00" />
             </div>
             <div>
-              {/* UPDATED: Dynamic Currency Symbol */}
               <label className="block text-sm font-medium text-gray-400 mb-2">Cost Price ({currency.symbol})</label>
               <input type="number" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-green-500 text-lg" placeholder="0.00" />
             </div>
@@ -196,7 +261,7 @@ export default function GeneratePage() {
           </div>
 
           <button type="submit" disabled={loading} className="w-full p-4 bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold rounded-xl transition disabled:opacity-50 flex justify-center items-center gap-2">
-            {loading ? (<><span className="animate-spin">️</span> Publishing...</>) : (<>{isPublic ? "🌍 Publish to Marketplace" : "💾 Save to Drafts"}</>)}
+            {loading ? (<><span className="animate-spin">⚙️</span> Publishing...</>) : (<>{isPublic ? "🌍 Publish to Marketplace" : "💾 Save to Drafts"}</>)}
           </button>
         </form>
       </div>
