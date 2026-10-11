@@ -31,7 +31,10 @@ export default function MarketplacePage() {
         const { data: profile } = await supabase.from("profiles").select("latitude, longitude").eq("id", session.user.id).single();
         if (profile && profile.latitude && profile.longitude) { userLat = profile.latitude; userLng = profile.longitude; setUserLoc({ lat: userLat, lng: userLng }); }
       }
-      const { data, error } = await supabase.from("listings").select("*, profiles(email)").eq("is_public", true).order("created_at", { ascending: false });
+      
+      // UPDATED: Sort by is_pinned first, then by created_at
+      const { data, error } = await supabase.from("listings").select("*, profiles(email)").eq("is_public", true).order("is_pinned", { ascending: false }).order("created_at", { ascending: false });
+      
       if (!error && data) {
         let processedData = data;
         if (userLat && userLng) {
@@ -57,7 +60,6 @@ export default function MarketplacePage() {
       if (error) { toast.error("Failed to send message."); } 
       else { 
         toast.success("✅ Message sent successfully!"); 
-        // Your awesome notification logic!
         await supabase.from('notifications').insert({ user_id: listing.user_id, type: 'message', content: `You received a new message about "${listing.product_name}"!`, is_read: false });
       }
     }
@@ -73,7 +75,6 @@ export default function MarketplacePage() {
       if (error) { toast.error("Failed to send offer."); } 
       else { 
         toast.success(`💰 Offer of $${offerAmount} sent to seller!`); 
-        // Your awesome notification logic!
         await supabase.from('notifications').insert({ user_id: listing.user_id, type: 'offer', content: `You received an offer of $${offerAmount} for "${listing.product_name}"!`, is_read: false });
       }
     }
@@ -107,7 +108,7 @@ export default function MarketplacePage() {
 
         {userLoc ? (
           <div className="flex items-center justify-center gap-2 mb-8 text-green-400 bg-green-900/20 py-2 px-4 rounded-full border border-green-800 w-fit mx-auto">
-            <span>📍</span><span className="text-sm font-bold">Showing items within 50 miles of your location</span>
+            <span></span><span className="text-sm font-bold">Showing items within 50 miles of your location</span>
           </div>
         ) : (
           <div className="flex items-center justify-center gap-2 mb-8 text-yellow-400 bg-yellow-900/20 py-2 px-4 rounded-full border border-yellow-800 w-fit mx-auto">
@@ -139,12 +140,17 @@ export default function MarketplacePage() {
               const price = listing.sale_price || 0;
               
               return (
-                <div key={listing.id} className="group bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-xl hover:shadow-2xl hover:border-purple-500/50 transition-all duration-300 flex flex-col">
+                <div key={listing.id} className={`group bg-gray-900 rounded-2xl border overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 flex flex-col ${listing.is_pinned ? 'border-yellow-500/50 ring-1 ring-yellow-500/20' : 'border-gray-800 hover:border-purple-500/50'}`}>
                   <div className="relative aspect-[4/3] bg-gray-800 overflow-hidden">
                     <img src={listing.image_url} alt={titleParts[0]} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     <div className="absolute top-4 right-4 bg-gray-950/80 backdrop-blur-md px-3 py-1 rounded-full border border-gray-700">
                       <span className="text-xs font-bold text-white uppercase">{titleParts[1] || 'New'}</span>
                     </div>
+                    {listing.is_pinned && (
+                      <div className="absolute top-4 left-4 bg-yellow-500/90 backdrop-blur-md px-3 py-1 rounded-full border border-yellow-300">
+                        <span className="text-xs font-bold text-white uppercase">⭐ Pinned</span>
+                      </div>
+                    )}
                   </div>
                   <div className="p-6 flex-grow flex flex-col">
                     <h3 className="text-xl font-bold text-white mb-2 line-clamp-1">{titleParts[0]}</h3>
@@ -152,12 +158,9 @@ export default function MarketplacePage() {
                       <span className="text-3xl font-bold text-purple-400">${price}</span>
                     </div>
                     <p className="text-gray-400 text-sm mb-4 line-clamp-2 flex-grow border-t border-gray-800 pt-4">{descParts[1] || 'No description provided.'}</p>
-                    
-                    {/* FIXED: Points to the /user/[id] page we just built */}
                     <Link href={`/user/${listing.user_id}`} className="text-xs text-gray-500 hover:text-blue-400 mb-4 flex items-center gap-1 transition">
                       👤 View Seller Profile & More Items
                     </Link>
-                    
                     <div className="flex gap-3 mt-auto">
                       <button onClick={() => handleMakeOffer(listing)} className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">
                          💰 Make Offer

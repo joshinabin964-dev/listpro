@@ -19,48 +19,34 @@ export default function GeneratePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  // FIXED: Now it ADDS images instead of replacing them
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length > 0) {
       const remainingSlots = 5 - imageFiles.length;
-      if (remainingSlots <= 0) {
-        toast.error("You can only upload up to 5 photos!");
-        return;
-      }
-      
+      if (remainingSlots <= 0) { toast.error("Max 5 photos!"); return; }
       const selectedFiles = files.slice(0, remainingSlots);
-
       const newPreviews = selectedFiles.map(file => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
-        return new Promise<string>((resolve) => {
-          reader.onloadend = () => resolve(reader.result as string);
-        });
+        return new Promise<string>((resolve) => { reader.onloadend = () => resolve(reader.result as string); });
       });
-
       Promise.all(newPreviews).then(newPreviewsResult => {
         setImageFiles(prev => [...prev, ...selectedFiles]);
         setImagePreviews(prev => [...prev, ...newPreviewsResult]);
       });
     }
-    // Reset input so you can select the same file again if needed
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const removeImage = (index: number) => {
-    const newFiles = imageFiles.filter((_, i) => i !== index);
-    const newPreviews = imagePreviews.filter((_, i) => i !== index);
-    setImageFiles(newFiles);
-    setImagePreviews(newPreviews);
+    setImageFiles(imageFiles.filter((_, i) => i !== index));
+    setImagePreviews(imagePreviews.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (imageFiles.length === 0 || !title || !salePrice) {
-      toast.error("Please fill in Title, Sale Price, and upload at least one Photo.");
+      toast.error("Please fill in Title, Sale Price, and upload a Photo.");
       return;
     }
     setLoading(true);
@@ -69,54 +55,48 @@ export default function GeneratePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { toast.error("Please log in first."); setLoading(false); return; }
 
-      const { data: profile } = await supabase.from("profiles").select("latitude, longitude").eq("id", session.user.id).single();
-      const userLat = profile?.latitude || null;
-      const userLng = profile?.longitude || null;
+      // 1. CHECK LIMIT FOR FREE USERS
+      const { data: profile } = await supabase.from("profiles").select("plan").eq("id", session.user.id).single();
+      const { count } = await supabase.from("listings").select("*", { count: 'exact', head: true }).eq("user_id", session.user.id).eq("status", "Available");
+      
+      if (profile?.plan === 'free' && count >= 3) {
+        toast.error(" Free Plan Limit Reached! Upgrade to Pro for unlimited listings.");
+        setLoading(false);
+        router.push("/pricing"); // Send them to upgrade page
+        return;
+      }
+
+      const { data: userLoc } = await supabase.from("profiles").select("latitude, longitude").eq("id", session.user.id).single();
+      const userLat = userLoc?.latitude || null;
+      const userLng = userLoc?.longitude || null;
 
       const publicUrls: string[] = [];
       for (const file of imageFiles) {
         const fileExt = file.name.split('.').pop();
         const fileName = `${session.user.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-
         const { error: uploadError } = await supabase.storage.from('product-images').upload(fileName, file);
         if (uploadError) { toast.error("Image upload failed."); setLoading(false); return; }
-
         const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fileName);
         publicUrls.push(publicUrl);
       }
 
       const { error: dbError } = await supabase.from('listings').insert({
-        user_id: session.user.id,
-        product_name: title,
-        image_url: publicUrls[0], 
-        image_urls: publicUrls,   
-        ai_title: `${title} - ${condition}`,
-        ai_bullets: ["High Quality", "Fast Shipping", "Satisfaction Guaranteed"],
-        ai_description: description,
-        cost_price: parseFloat(costPrice) || 0,
-        sale_price: parseFloat(salePrice) || 0,
-        status: status,
-        is_public: isPublic,
-        latitude: userLat, 
-        longitude: userLng 
+        user_id: session.user.id, product_name: title, image_url: publicUrls[0], image_urls: publicUrls,
+        ai_title: `${title} - ${condition}`, ai_bullets: ["High Quality", "Fast Shipping", "Satisfaction Guaranteed"],
+        ai_description: description, cost_price: parseFloat(costPrice) || 0, sale_price: parseFloat(salePrice) || 0,
+        status: status, is_public: isPublic, latitude: userLat, longitude: userLng, is_pinned: false
       });
 
-      if (dbError) {
-        toast.error("Error saving listing.");
-      } else {
-        toast.success(isPublic ? "Published to Marketplace!" : "Saved to Drafts!");
-        router.push("/my-listings");
-      }
-    } catch (error) {
-      toast.error("Something went wrong.");
-    }
+      if (dbError) { toast.error("Error saving listing."); } 
+      else { toast.success(isPublic ? "Published!" : "Saved to Drafts!"); router.push("/my-listings"); }
+    } catch (error) { toast.error("Something went wrong."); }
     setLoading(false);
   };
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-8">
       <div className="max-w-2xl mx-auto">
-        <Link href="/my-listings" className="mb-8 text-gray-400 hover:text-white flex items-center gap-2 w-fit">← Back to My Listings</Link>
+        <Link href="/my-listings" className="mb-8 text-gray-400 hover:text-white flex items-center gap-2 w-fit">← Back</Link>
         <h1 className="text-3xl font-bold mb-2 text-blue-500">Create New Listing</h1>
         <p className="text-gray-400 mb-8">Fill in the details to track and list your product.</p>
 
@@ -147,7 +127,7 @@ export default function GeneratePage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-2">Product Title (Required)</label>
-            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg" placeholder="e.g. iPhone 13 Pro Max 128GB" />
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg" placeholder="e.g. iPhone 13 Pro Max" />
           </div>
 
           <div className="grid grid-cols-3 gap-4">
@@ -162,9 +142,7 @@ export default function GeneratePage() {
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-2">Status</label>
               <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg">
-                <option value="Available">Available</option>
-                <option value="Sold">Sold</option>
-                <option value="Pending">Pending</option>
+                <option value="Available">Available</option><option value="Sold">Sold</option><option value="Pending">Pending</option>
               </select>
             </div>
           </div>
@@ -172,10 +150,7 @@ export default function GeneratePage() {
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-2">Condition</label>
             <select value={condition} onChange={(e) => setCondition(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg">
-              <option value="New">Brand New</option>
-              <option value="Used - Like New">Used - Like New</option>
-              <option value="Used - Good">Used - Good</option>
-              <option value="Used - Fair">Used - Fair</option>
+              <option value="New">Brand New</option><option value="Used - Like New">Used - Like New</option><option value="Used - Good">Used - Good</option><option value="Used - Fair">Used - Fair</option>
             </select>
           </div>
 
@@ -190,7 +165,7 @@ export default function GeneratePage() {
           </div>
 
           <button type="submit" disabled={loading} className="w-full p-4 bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold rounded-xl transition disabled:opacity-50 flex justify-center items-center gap-2">
-            {loading ? (<><span className="animate-spin">⚙️</span> Publishing...</>) : (<>{isPublic ? "🌍 Publish to Marketplace" : "💾 Save to Drafts"}</>)}
+            {loading ? (<><span className="animate-spin">️</span> Publishing...</>) : (<>{isPublic ? "🌍 Publish to Marketplace" : "💾 Save to Drafts"}</>)}
           </button>
         </form>
       </div>

@@ -12,6 +12,7 @@ export default function MyListingsPage() {
   const [copyMenuOpen, setCopyMenuOpen] = useState<string | null>(null);
   const [offersByListing, setOffersByListing] = useState<any>({});
   const [viewingOffersFor, setViewingOffersFor] = useState<string | null>(null);
+  const [userPlan, setUserPlan] = useState("free"); // NEW: Track plan
   const router = useRouter();
 
   useEffect(() => {
@@ -19,21 +20,21 @@ export default function MyListingsPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/login"); return; }
       
-      // 1. Fetch Listings
-      const { data: listingsData, error: listError } = await supabase.from("listings").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false });
-      if (!listError) setListings(listingsData || []);
+      // Get Plan
+      const { data: profile } = await supabase.from("profiles").select("plan").eq("id", session.user.id).single();
+      if (profile) setUserPlan(profile.plan || "free");
 
-      // 2. Fetch Pending Offers for this seller
+      const { data: listingsData } = await supabase.from("listings").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false });
+      if (!listingsData) { setLoading(false); return; }
+      setListings(listingsData);
+
       const { data: offersData } = await supabase.from("offers").select("*").eq("seller_id", session.user.id).eq("status", "pending");
-      
-      // Group offers by listing ID
       const offersMap: any = {};
       offersData?.forEach((offer: any) => {
         if (!offersMap[offer.listing_id]) offersMap[offer.listing_id] = [];
         offersMap[offer.listing_id].push(offer);
       });
       setOffersByListing(offersMap);
-
       setLoading(false);
     };
     fetchData();
@@ -47,11 +48,23 @@ export default function MyListingsPage() {
       const fileName = imageUrl.split('/').pop();
       if(fileName) await supabase.storage.from('product-images').remove([fileName]);
     }
-    if (!dbError) { 
-      setListings(listings.filter(l => l.id !== id)); 
-      toast.success("Listing deleted.");
-    } else { toast.error("Error deleting."); }
+    if (!dbError) { setListings(listings.filter(l => l.id !== id)); toast.success("Listing deleted."); } 
+    else { toast.error("Error deleting."); }
     setDeletingId(null);
+  };
+
+  // NEW: Handle Pinning
+  const handlePin = async (id: string, currentPinStatus: boolean) => {
+    if (userPlan !== 'pro') {
+      toast.error("🔒 Pin to Top is a Pro feature! Upgrade to use this.");
+      router.push("/pricing");
+      return;
+    }
+    const { error } = await supabase.from("listings").update({ is_pinned: !currentPinStatus }).eq("id", id);
+    if (!error) {
+      setListings(listings.map(l => l.id === id ? { ...l, is_pinned: !currentPinStatus } : l));
+      toast.success(!currentPinStatus ? "📌 Pinned to top!" : "Unpinned.");
+    }
   };
 
   const handleCopy = (listing: any, type: string) => {
@@ -59,12 +72,10 @@ export default function MyListingsPage() {
     const condition = listing.ai_title?.split(' - ')[1] || 'New';
     const price = listing.sale_price || 0;
     const desc = listing.ai_description || 'No description provided.';
-    
     let textToCopy = "";
     if (type === "standard") textToCopy = `${title}\nPrice: $${price}\nCondition: ${condition}\n\n${desc}`;
-    else if (type === "fb") textToCopy = `🔥 FOR SALE: ${title}\n💰 Price: $${price} (Firm)\n📍 Condition: ${condition}\n\n${desc}\n\n📩 DM me if interested! First come, first served. No lowballs, please.`;
-    else if (type === "ebay") textToCopy = `Title: ${title} - ${condition}\nPrice: $${price}\n\nItem Specifics:\n- Condition: ${condition}\n- High Quality & Authentic\n- Fast & Secure Shipping\n- Satisfaction Guaranteed\n\nDescription:\n${desc}\n\n*Please review all photos carefully. Feel free to message with any questions!*`;
-    
+    else if (type === "fb") textToCopy = ` FOR SALE: ${title}\n💰 Price: $${price} (Firm)\n Condition: ${condition}\n\n${desc}\n\n📩 DM me if interested!`;
+    else if (type === "ebay") textToCopy = `Title: ${title} - ${condition}\nPrice: $${price}\n\nDescription:\n${desc}`;
     navigator.clipboard.writeText(textToCopy);
     setCopyMenuOpen(null);
     toast.success(`✅ Copied ${type.toUpperCase()} template!`);
@@ -74,8 +85,6 @@ export default function MyListingsPage() {
     const { error } = await supabase.from("offers").update({ status: action }).eq("id", offerId);
     if (!error) {
       toast.success(`Offer ${action === 'accepted' ? 'Accepted' : 'Declined'}!`);
-      
-      // Update local state to remove the offer
       setOffersByListing((prev: any) => {
         const currentOffers = prev[listingId] || [];
         const newOffers = currentOffers.filter((o: any) => o.id !== offerId);
@@ -83,14 +92,10 @@ export default function MyListingsPage() {
         if (newOffers.length === 0) delete newState[listingId];
         return newState;
       });
-
-      // If accepted, mark the listing as Pending so others know it's being sold
       if (action === 'accepted') {
         await supabase.from("listings").update({ status: 'Pending' }).eq("id", listingId);
         setListings(prev => prev.map(l => l.id === listingId ? { ...l, status: 'Pending' } : l));
       }
-    } else {
-      toast.error("Failed to update offer.");
     }
   };
 
@@ -125,18 +130,22 @@ export default function MyListingsPage() {
               const isViewingOffers = viewingOffersFor === listing.id;
 
               return (
-                <div key={listing.id} className="group bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-xl hover:shadow-2xl hover:border-gray-700 transition-all duration-300 flex flex-col relative">
+                <div key={listing.id} className={`group bg-gray-900 rounded-2xl border overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 flex flex-col relative ${listing.is_pinned ? 'border-yellow-500/50 ring-1 ring-yellow-500/20' : 'border-gray-800 hover:border-gray-700'}`}>
                   <div className="relative aspect-[4/3] bg-gray-800 overflow-hidden">
                     <img src={listing.image_url} alt={listing.product_name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     <div className={`absolute top-4 right-4 backdrop-blur-md px-3 py-1 rounded-full border ${listing.status === 'Sold' ? 'bg-green-600/90 border-green-400' : listing.status === 'Pending' ? 'bg-yellow-600/90 border-yellow-400' : 'bg-gray-950/80 border-gray-700'}`}>
                       <span className="text-xs font-bold text-white uppercase">{listing.status}</span>
                     </div>
-                    {listing.is_public && listing.status !== 'Sold' && (
+                    {listing.is_pinned && (
+                      <div className="absolute top-4 left-4 bg-yellow-500/90 backdrop-blur-md px-3 py-1 rounded-full border border-yellow-300">
+                        <span className="text-xs font-bold text-white uppercase"> Pinned</span>
+                      </div>
+                    )}
+                    {listing.is_public && listing.status !== 'Sold' && !listing.is_pinned && (
                       <div className="absolute top-4 left-4 bg-purple-600/90 backdrop-blur-md px-3 py-1 rounded-full border border-purple-400">
                         <span className="text-xs font-bold text-white uppercase">🌍 Public</span>
                       </div>
                     )}
-                    {/* NEW: Offer Badge */}
                     {hasOffers && !isViewingOffers && (
                       <div className="absolute bottom-4 right-4 bg-green-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg animate-pulse">
                         💰 {offersByListing[listing.id].length} New Offer{offersByListing[listing.id].length > 1 ? 's' : ''}
@@ -152,11 +161,10 @@ export default function MyListingsPage() {
                     </div>
                     
                     <div className="relative mt-auto">
-                      {/* NEW: View Offers UI */}
                       {isViewingOffers ? (
                         <div className="space-y-3">
                           <h4 className="text-sm font-bold text-green-400 mb-2">Incoming Offers:</h4>
-                          <div className="max-h-40 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                          <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
                             {offersByListing[listing.id].map((offer: any) => (
                               <div key={offer.id} className="bg-gray-800 p-3 rounded-lg border border-gray-700 flex justify-between items-center">
                                 <span className="font-bold text-white">${offer.amount}</span>
@@ -178,18 +186,20 @@ export default function MyListingsPage() {
                               <button onClick={() => handleCopy(listing, "ebay")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition"> eBay Optimized</button>
                             </div>
                           )}
-                          <div className="flex gap-3">
+                          <div className="flex gap-2 flex-wrap">
+                            {/* NEW: Pin Button */}
+                            <button onClick={() => handlePin(listing.id, listing.is_pinned)} className={`px-3 py-3 rounded-xl text-sm font-bold transition border flex justify-center items-center gap-1 ${listing.is_pinned ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20 hover:bg-yellow-500 hover:text-white' : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white'}`}>
+                              📌
+                            </button>
+                            
                             {hasOffers && (
                               <button onClick={() => setViewingOffersFor(listing.id)} className="flex-1 px-4 py-3 bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white rounded-xl text-sm font-bold transition border border-green-500/20 flex justify-center items-center gap-2">
                                 💰 View Offers
                               </button>
                             )}
-                            <button onClick={() => setCopyMenuOpen(copyMenuOpen === listing.id ? null : listing.id)} className={`flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-bold transition border border-gray-700 flex justify-center items-center gap-2 ${hasOffers ? '' : 'w-full'}`}>
-                               Copy For...
+                            <button onClick={() => setCopyMenuOpen(copyMenuOpen === listing.id ? null : listing.id)} className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-bold transition border border-gray-700 flex justify-center items-center gap-2">
+                               Copy
                             </button>
-                            <Link href={`/my-listings/edit/${listing.id}`} className="flex-1">
-                              <button className="w-full px-4 py-3 bg-blue-500/10 hover:bg-blue-500 text-blue-400 hover:text-white rounded-xl text-sm font-bold transition border border-blue-500/20">Edit</button>
-                            </Link>
                             <button onClick={() => handleDelete(listing.id, listing.image_url)} disabled={deletingId === listing.id} className="px-4 py-3 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-xl text-sm font-bold transition border border-red-500/20">
                               {deletingId === listing.id ? "..." : "🗑️"}
                             </button>
