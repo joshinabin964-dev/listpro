@@ -27,19 +27,63 @@ export default function OptimizerPage() {
     checkUser();
   }, [router]);
 
-  // Simple inline CSV parser (no external libraries needed)
+  // BULLETPROOF CSV PARSER: Handles quotes, commas inside quotes, and newlines
   const parseCSV = (text: string) => {
-    const lines = text.split('\n').filter(line => line.trim() !== '');
-    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-    const data = [];
-    for (let i = 1; i < lines.length; i++) {
-      const currentline = lines[i].split(',').map(cell => cell.trim().replace(/^"|"$/g, ''));
-      const obj: any = {};
-      headers.forEach((header, index) => {
-        obj[header] = currentline[index] || "";
-      });
-      data.push(obj);
+    const result: string[][] = [];
+    let row: string[] = [];
+    let cell = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+      
+      if (inQuotes) {
+        if (char === '"' && nextChar === '"') {
+          cell += '"';
+          i++; // Skip the next quote
+        } else if (char === '"') {
+          inQuotes = false;
+        } else {
+          cell += char;
+        }
+      } else {
+        if (char === '"') {
+          inQuotes = true;
+        } else if (char === ',') {
+          row.push(cell.trim());
+          cell = '';
+        } else if (char === '\n' || char === '\r') {
+          row.push(cell.trim());
+          if (row.length > 0 && !(row.length === 1 && row[0] === '')) {
+            result.push(row);
+          }
+          row = [];
+          cell = '';
+          if (char === '\r' && nextChar === '\n') i++; // Handle Windows \r\n
+        } else {
+          cell += char;
+        }
+      }
     }
+    
+    // Push the last cell/row if it exists
+    if (cell !== '' || row.length > 0) {
+      row.push(cell.trim());
+      result.push(row);
+    }
+    
+    // Convert 2D array into array of objects
+    if (result.length === 0) return { headers: [], data: [] };
+    const headers = result[0];
+    const data = result.slice(1).map(r => {
+      const obj: any = {};
+      headers.forEach((h, i) => {
+        obj[h] = r[i] !== undefined ? r[i] : '';
+      });
+      return obj;
+    });
+    
     return { headers, data };
   };
 
@@ -64,6 +108,13 @@ export default function OptimizerPage() {
       // 1. Read and parse the file
       const text = await file.text();
       const { data: rawData } = parseCSV(text);
+
+      if (rawData.length === 0) {
+        toast.error("CSV file is empty or invalid.");
+        setIsProcessing(false);
+        toast.dismiss();
+        return;
+      }
 
       // 2. Apply Rule-Based Formatting (NO AI)
       const keywordList = keywords.split(',').map(k => k.trim()).filter(k => k !== "");
@@ -195,7 +246,7 @@ export default function OptimizerPage() {
             <h3 className="text-lg font-bold mb-4 text-white">1. Upload CSV</h3>
             <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".csv" className="hidden" />
             <div onClick={() => fileInputRef.current?.click()} className="w-full h-40 border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-gray-800/50 transition">
-              <span className="text-3xl mb-2">📁</span>
+              <span className="text-3xl mb-2"></span>
               <span className="text-gray-400 text-sm font-medium text-center px-4">{file ? file.name : "Click to upload .csv"}</span>
             </div>
           </div>
