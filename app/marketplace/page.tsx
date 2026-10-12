@@ -1,207 +1,158 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import toast from "react-hot-toast";
+import { useRouter } from "next/navigation";
 
-// THE GLOBAL CURRENCY MAP
-const currencyMap: Record<string, { symbol: string; code: string }> = {
-  "Nepal": { symbol: "Rs.", code: "NPR" }, "India": { symbol: "₹", code: "INR" },
-  "Pakistan": { symbol: "Rs.", code: "PKR" }, "Bangladesh": { symbol: "৳", code: "BDT" },
-  "USA": { symbol: "$", code: "USD" }, "United States": { symbol: "$", code: "USD" },
-  "UK": { symbol: "£", code: "GBP" }, "United Kingdom": { symbol: "£", code: "GBP" },
-  "Canada": { symbol: "C$", code: "CAD" }, "Australia": { symbol: "A$", code: "AUD" },
-  "New Zealand": { symbol: "NZ$", code: "NZD" }, "China": { symbol: "¥", code: "CNY" },
-  "Japan": { symbol: "¥", code: "JPY" }, "South Korea": { symbol: "₩", code: "KRW" },
-  "Singapore": { symbol: "S$", code: "SGD" }, "Malaysia": { symbol: "RM", code: "MYR" },
-  "Indonesia": { symbol: "Rp", code: "IDR" }, "Thailand": { symbol: "฿", code: "THB" },
-  "Vietnam": { symbol: "₫", code: "VND" }, "Philippines": { symbol: "", code: "PHP" },
-  "UAE": { symbol: "د.إ", code: "AED" }, "Saudi Arabia": { symbol: "﷼", code: "SAR" },
-  "Qatar": { symbol: "", code: "QAR" }, "Kuwait": { symbol: "د.ك", code: "KWD" },
-  "Oman": { symbol: "﷼", code: "OMR" }, "Israel": { symbol: "₪", code: "ILS" },
-  "Turkey": { symbol: "₺", code: "TRY" }, "Egypt": { symbol: "£", code: "EGP" },
-  "South Africa": { symbol: "R", code: "ZAR" }, "Nigeria": { symbol: "₦", code: "NGN" },
-  "Kenya": { symbol: "KSh", code: "KES" }, "Ghana": { symbol: "", code: "GHS" },
-  "Germany": { symbol: "€", code: "EUR" }, "France": { symbol: "€", code: "EUR" },
-  "Italy": { symbol: "€", code: "EUR" }, "Spain": { symbol: "€", code: "EUR" },
-  "Switzerland": { symbol: "CHF", code: "CHF" }, "Sweden": { symbol: "kr", code: "SEK" },
-  "Norway": { symbol: "kr", code: "NOK" }, "Denmark": { symbol: "kr", code: "DKK" },
-  "Poland": { symbol: "zł", code: "PLN" }, "Russia": { symbol: "₽", code: "RUB" },
-  "Ukraine": { symbol: "₴", code: "UAH" }, "Brazil": { symbol: "R$", code: "BRL" },
-  "Argentina": { symbol: "$", code: "ARS" }, "Mexico": { symbol: "$", code: "MXN" },
-  "Colombia": { symbol: "$", code: "COP" }, "Chile": { symbol: "$", code: "CLP" },
-  "Peru": { symbol: "S/.", code: "PEN" }, "default": { symbol: "$", code: "USD" }
-};
-
-// Helper to find the symbol from the saved code
-const getSymbol = (code: string) => {
-  if (!code) return '$';
-  const found = Object.values(currencyMap).find(c => c.code === code);
-  return found ? found.symbol : '$';
-};
-
-function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
-  var R = 6371; 
-  var dLat = deg2rad(lat2 - lat1);
-  var dLon = deg2rad(lon2 - lon1);
-  var a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2);
-  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c; 
+// Helper function to calculate distance between two coordinates (in miles)
+function getDistanceFromLatLonInMiles(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 3959; 
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
-function deg2rad(deg: number) { return deg * (Math.PI/180); }
+
+function deg2rad(deg: number) { return deg * (Math.PI / 180); }
 
 export default function MarketplacePage() {
   const [listings, setListings] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterCondition, setFilterCondition] = useState("All");
-  const [userLoc, setUserLoc] = useState<{lat: number, lng: number} | null>(null);
-  const router = useRouter();
 
   useEffect(() => {
-    const fetchMarketplaceData = async () => {
+    const initData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      let userLat = null; let userLng = null;
       if (session) {
         const { data: profile } = await supabase.from("profiles").select("latitude, longitude").eq("id", session.user.id).single();
-        if (profile && profile.latitude && profile.longitude) { userLat = profile.latitude; userLng = profile.longitude; setUserLoc({ lat: userLat, lng: userLng }); }
-      }
-      
-      const { data, error } = await supabase.from("listings").select("*, profiles(email)").eq("is_public", true).order("is_pinned", { ascending: false }).order("created_at", { ascending: false });
-      
-      if (!error && data) {
-        let processedData = data;
-        if (userLat && userLng) {
-          processedData = data.filter((listing: any) => {
-            if (!listing.latitude || !listing.longitude) return false; 
-            return getDistanceFromLatLonInKm(userLat, userLng, listing.latitude, listing.longitude) <= 80; 
-          });
+        if (profile && profile.latitude && profile.longitude) {
+          setUserLocation({ lat: profile.latitude, lng: profile.longitude });
         }
-        setListings(processedData);
       }
+      await fetchListings("");
       setLoading(false);
     };
-    fetchMarketplaceData();
+    initData();
   }, []);
 
-  const handleContactSeller = async (listing: any) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { toast.error("Please log in to contact the seller."); router.push("/login"); return; }
-    if (session.user.id === listing.user_id) { toast.error("This is your own listing!"); return; }
-    const message = prompt(`Write a message to the seller about "${listing.product_name}":`);
-    if (message && message.trim() !== "") {
-      const { error } = await supabase.from("messages").insert({ listing_id: listing.id, sender_id: session.user.id, receiver_id: listing.user_id, content: message });
-      if (error) { toast.error("Failed to send message."); } 
-      else { 
-        toast.success("✅ Message sent successfully!"); 
-        await supabase.from('notifications').insert({ user_id: listing.user_id, type: 'message', content: `You received a new message about "${listing.product_name}"!`, is_read: false });
-      }
+  const fetchListings = async (term: string) => {
+    setLoading(true);
+    let query = supabase.from("listings").select("*, profiles(full_name)").eq("status", "Active");
+    
+    // SMART SEARCH: Looks in BOTH Title and Description for ANY item
+    if (term) {
+      query = query.or(`title.ilike.%${term}%,description.ilike.%${term}%`);
     }
+
+    const { data, error } = await query.order("created_at", { ascending: false });
+    
+    if (data && !error) {
+      const listingsWithDistance = data.map((listing: any) => {
+        if (userLocation && listing.latitude && listing.longitude) {
+          const dist = getDistanceFromLatLonInMiles(userLocation.lat, userLocation.lng, listing.latitude, listing.longitude);
+          return { ...listing, distance: dist };
+        }
+        return { ...listing, distance: 9999 };
+      });
+
+      // Sort by distance (nearest first)
+      listingsWithDistance.sort((a: any, b: any) => a.distance - b.distance);
+      setListings(listingsWithDistance);
+    } else {
+      setListings([]);
+    }
+    setLoading(false);
   };
 
-  const handleMakeOffer = async (listing: any) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { toast.error("Please log in to make an offer."); router.push("/login"); return; }
-    if (session.user.id === listing.user_id) { toast.error("You can't make an offer on your own item!"); return; }
-    const offerAmount = prompt(`Enter your offer amount for "${listing.product_name}" (Current price: ${getSymbol(listing.currency_code)}${listing.sale_price}):`);
-    if (offerAmount && !isNaN(parseFloat(offerAmount))) {
-      const { error } = await supabase.from("offers").insert({ listing_id: listing.id, buyer_id: session.user.id, seller_id: listing.user_id, amount: parseFloat(offerAmount), status: 'pending' });
-      if (error) { toast.error("Failed to send offer."); } 
-      else { 
-        toast.success(`💰 Offer of ${getSymbol(listing.currency_code)}${offerAmount} sent to seller!`); 
-        await supabase.from('notifications').insert({ user_id: listing.user_id, type: 'offer', content: `You received an offer of ${getSymbol(listing.currency_code)}${offerAmount} for "${listing.product_name}"!`, is_read: false });
-      }
-    }
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetchListings(searchTerm);
   };
 
-  const filteredListings = listings.filter(listing => {
-    const matchesSearch = listing.product_name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCondition = filterCondition === "All" || listing.ai_title?.includes(filterCondition);
-    return matchesSearch && matchesCondition;
-  });
+  const handleClearSearch = () => {
+    setSearchTerm("");
+    fetchListings("");
+  };
 
-  if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><p>Loading marketplace...</p></main>;
+  if (loading && listings.length === 0) {
+    return <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><p>Loading Marketplace...</p></main>;
+  }
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link href="/dashboard"><h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent cursor-pointer">ListPro</h1></Link>
+          <Link href="/"><h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">ListPro</h1></Link>
           <div className="flex items-center gap-4">
-            <Link href="/my-listings"><button className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-sm font-bold rounded-lg transition">My Dashboard</button></Link>
-            <Link href="/generate"><button className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-lg transition shadow-lg shadow-blue-900/50">+ Sell an Item</button></Link>
+            <Link href="/dashboard"><button className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition">My Dashboard</button></Link>
+            <Link href="/generate"><button className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-bold transition">+ Sell an Item</button></Link>
           </div>
         </div>
       </nav>
 
       <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="text-center mb-8">
-          <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">Public Marketplace</h1>
-          <p className="text-xl text-gray-400">Discover unique items listed by the ListPro community.</p>
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Public Marketplace</h1>
+          <p className="text-gray-400 text-lg">Discover unique items listed by the ListPro community.</p>
         </div>
 
-        {userLoc ? (
-          <div className="flex items-center justify-center gap-2 mb-8 text-green-400 bg-green-900/20 py-2 px-4 rounded-full border border-green-800 w-fit mx-auto">
-            <span>📍</span><span className="text-sm font-bold">Showing items within 50 miles of your location</span>
+        {/* Search Bar */}
+        <form onSubmit={handleSearch} className="max-w-3xl mx-auto mb-12 flex gap-4">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search for anything (e.g. iPhone, Sofa, Car, Nike)..."
+            className="flex-1 p-4 bg-gray-900 border border-gray-800 rounded-xl text-white focus:outline-none focus:border-blue-500"
+          />
+          <button type="submit" className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition">Search</button>
+          {searchTerm && (
+            <button type="button" onClick={handleClearSearch} className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition">Clear</button>
+          )}
+        </form>
+
+        {/* Results Grid */}
+        {listings.length === 0 ? (
+          <div className="text-center py-20 bg-gray-900 rounded-2xl border border-gray-800">
+            <p className="text-2xl text-gray-400 mb-6">No items found matching your search.</p>
+            <Link href="/generate"><button className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition">Be the first to list an item!</button></Link>
           </div>
         ) : (
-          <div className="flex items-center justify-center gap-2 mb-8 text-yellow-400 bg-yellow-900/20 py-2 px-4 rounded-full border border-yellow-800 w-fit mx-auto">
-            <span>⚠️</span><span className="text-sm font-bold">Location not set. <Link href="/dashboard" className="underline hover:text-yellow-300">Set location in Dashboard</Link> to see nearby items!</span>
-          </div>
-        )}
-
-        <div className="flex flex-col md:flex-row gap-4 mb-12 bg-gray-900 p-4 rounded-2xl border border-gray-800">
-          <input type="text" placeholder="🔍 Search products..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-grow p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500" />
-          <select value={filterCondition} onChange={(e) => setFilterCondition(e.target.value)} className="p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 w-full md:w-48">
-            <option value="All">All Conditions</option><option value="New">Brand New</option><option value="Used - Like New">Used - Like New</option><option value="Used - Good">Used - Good</option><option value="Used - Fair">Used - Fair</option>
-          </select>
-        </div>
-
-        {filteredListings.length === 0 ? (
-          <div className="text-center py-24 bg-gray-900/50 rounded-3xl border border-gray-800 border-dashed">
-            <p className="text-2xl text-gray-400 mb-6">No items found matching your search nearby.</p>
-            <Link href="/generate"><button className="px-8 py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl transition">Be the first to list an item!</button></Link>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredListings.map((listing) => {
-              const titleParts = listing.ai_title?.split(' - ') || [listing.product_name, 'New'];
-              const descParts = listing.ai_description?.split('\n\n') || ['', ''];
-              const price = listing.sale_price || 0;
-              const symbol = getSymbol(listing.currency_code); // Get the correct symbol
-              
-              return (
-                <div key={listing.id} className={`group bg-gray-900 rounded-2xl border overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 flex flex-col ${listing.is_pinned ? 'border-yellow-500/50 ring-1 ring-yellow-500/20' : 'border-gray-800 hover:border-purple-500/50'}`}>
-                  <div className="relative aspect-[4/3] bg-gray-800 overflow-hidden">
-                    <img src={listing.image_url} alt={titleParts[0]} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                    <div className="absolute top-4 right-4 bg-gray-950/80 backdrop-blur-md px-3 py-1 rounded-full border border-gray-700">
-                      <span className="text-xs font-bold text-white uppercase">{titleParts[1] || 'New'}</span>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {listings.map((listing) => (
+              // THIS LINK TAKES YOU TO THE DETAILS PAGE WHEN CLICKED
+              <Link key={listing.id} href={`/listing/${listing.id}`} className="block group">
+                <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden hover:border-blue-500 transition relative h-full flex flex-col">
+                  {/* Distance Badge */}
+                  {listing.distance < 9999 && (
+                    <div className="absolute top-4 right-4 bg-black/70 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-green-400 border border-green-500/30 z-10">
+                      📍 {listing.distance.toFixed(1)} mi
                     </div>
-                    {listing.is_pinned && (
-                      <div className="absolute top-4 left-4 bg-yellow-500/90 backdrop-blur-md px-3 py-1 rounded-full border border-yellow-300">
-                        <span className="text-xs font-bold text-white uppercase">⭐ Pinned</span>
-                      </div>
+                  )}
+                  
+                  <div className="aspect-square bg-gray-800 overflow-hidden">
+                    {listing.image_url ? (
+                      <img src={listing.image_url} alt={listing.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-600">No Image</div>
                     )}
                   </div>
-                  <div className="p-6 flex-grow flex flex-col">
-                    <h3 className="text-xl font-bold text-white mb-2 line-clamp-1">{titleParts[0]}</h3>
-                    <div className="flex items-baseline gap-1 mb-4">
-                      {/* UPDATED: Dynamic Currency Symbol */}
-                      <span className="text-3xl font-bold text-purple-400">{symbol}{price}</span>
+                  <div className="p-5 flex-1 flex flex-col">
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="font-bold text-white text-lg truncate pr-2">{listing.title}</h3>
+                      <span className="text-blue-400 font-bold text-lg whitespace-nowrap">${listing.sale_price}</span>
                     </div>
-                    <p className="text-gray-400 text-sm mb-4 line-clamp-2 flex-grow border-t border-gray-800 pt-4">{descParts[1] || 'No description provided.'}</p>
-                    <Link href={`/user/${listing.user_id}`} className="text-xs text-gray-500 hover:text-blue-400 mb-4 flex items-center gap-1 transition">
-                      👤 View Seller Profile & More Items
-                    </Link>
-                    <div className="flex gap-3 mt-auto">
-                      <button onClick={() => handleMakeOffer(listing)} className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">💰 Make Offer</button>
-                      <button onClick={() => handleContactSeller(listing)} className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">💬 Contact</button>
+                    <p className="text-gray-500 text-sm mb-4 line-clamp-2">{listing.description || "No description provided."}</p>
+                    <div className="mt-auto flex justify-between items-center text-xs text-gray-600 pt-4 border-t border-gray-800">
+                      <span>by {listing.profiles?.full_name || "Seller"}</span>
+                      <span>{listing.condition || "Used"}</span>
                     </div>
                   </div>
                 </div>
-              );
-            })}
+              </Link>
+            ))}
           </div>
         )}
       </div>
