@@ -18,6 +18,7 @@ export default function DashboardPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/login"); return; }
 
+      // 1. Get Profile & Stats
       const { data: profile } = await supabase.from("profiles").select("plan, country, latitude, longitude").eq("id", session.user.id).single();
       if (profile) setPlan(profile.plan || "free");
 
@@ -29,6 +30,7 @@ export default function DashboardPage() {
         setStats({ revenue, profit });
       }
 
+      // 2. Fetch Unread Notifications
       const { data: notifs } = await supabase
         .from("notifications")
         .select("*")
@@ -103,7 +105,6 @@ export default function DashboardPage() {
                     )}
                   </div>
                   
-                  {/* NEW: View All Link at the bottom of the dropdown */}
                   <Link href="/notifications" className="block p-3 text-center text-sm text-blue-400 hover:text-blue-300 font-bold border-t border-gray-800 hover:bg-gray-800 transition bg-gray-900/50">
                     View All Notifications →
                   </Link>
@@ -154,7 +155,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
+        {/* UPDATED GRID: Changed to 3 columns on large screens to fit 5 cards perfectly */}
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Link href="/generate" className="block">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-blue-500 transition cursor-pointer group">
               <span className="text-4xl mb-4 block">🚀</span>
@@ -181,6 +183,15 @@ export default function DashboardPage() {
               <span className="text-4xl mb-4 block"></span>
               <h3 className="text-2xl font-bold mb-2 group-hover:text-yellow-400 transition">My Inbox</h3>
               <p className="text-gray-400">Read messages from interested buyers.</p>
+            </div>
+          </Link>
+          
+          {/* NEW: BULK OPTIMIZER CARD */}
+          <Link href="/optimizer" className="block">
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-cyan-500 transition cursor-pointer group">
+              <span className="text-4xl mb-4 block">⚡</span>
+              <h3 className="text-2xl font-bold mb-2 group-hover:text-cyan-400 transition">Bulk Optimizer</h3>
+              <p className="text-gray-400">Format CSVs for Daraz, Shopify, Amazon & Etsy.</p>
             </div>
           </Link>
         </div>
