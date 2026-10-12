@@ -21,10 +21,10 @@ const currencyMap: Record<string, { symbol: string; code: string }> = {
   "Myanmar": { symbol: "K", code: "MMK" }, "Cambodia": { symbol: "៛", code: "KHR" },
   "Laos": { symbol: "₭", code: "LAK" }, "Mongolia": { symbol: "₮", code: "MNT" },
   "Papua New Guinea": { symbol: "K", code: "PGK" }, "Fiji": { symbol: "FJ$", code: "FJD" },
-  "UAE": { symbol: "د.إ", code: "AED" }, "Saudi Arabia": { symbol: "﷼", code: "SAR" },
-  "Qatar": { symbol: "﷼", code: "QAR" }, "Kuwait": { symbol: "د.ك", code: "KWD" },
+  "UAE": { symbol: "د.إ", code: "AED" }, "Saudi Arabia": { symbol: "", code: "SAR" },
+  "Qatar": { symbol: "", code: "QAR" }, "Kuwait": { symbol: "د.ك", code: "KWD" },
   "Oman": { symbol: "﷼", code: "OMR" }, "Bahrain": { symbol: ".د.ب", code: "BHD" },
-  "Israel": { symbol: "₪", code: "ILS" }, "Turkey": { symbol: "₺", code: "TRY" },
+  "Israel": { symbol: "", code: "ILS" }, "Turkey": { symbol: "₺", code: "TRY" },
   "Egypt": { symbol: "£", code: "EGP" }, "Morocco": { symbol: "د.م.", code: "MAD" },
   "Algeria": { symbol: "د.ج", code: "DZD" }, "Tunisia": { symbol: "د.ت", code: "TND" },
   "Jordan": { symbol: "د.ا", code: "JOD" }, "Lebanon": { symbol: "ل.ل", code: "LBP" },
@@ -130,7 +130,7 @@ export default function GeneratePage() {
       const { count } = await supabase.from("listings").select("*", { count: 'exact', head: true }).eq("user_id", session.user.id).eq("status", "Available");
       
       if (profile?.plan === 'free' && (count || 0) >= 3) {
-        toast.error("🚫 Free Plan Limit Reached! Upgrade to Pro for unlimited listings.");
+        toast.error(" Free Plan Limit Reached! Upgrade to Pro for unlimited listings.");
         setLoading(false);
         router.push("/pricing");
         return;
@@ -264,7 +264,7 @@ export default function GeneratePage() {
           </div>
 
           <button type="submit" disabled={loading} className="w-full p-4 bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold rounded-xl transition disabled:opacity-50 flex justify-center items-center gap-2">
-            {loading ? (<><span className="animate-spin">⚙️</span> Processing...</>) : (<>{isPublic ? "🌍 Publish to Marketplace" : "💾 Save to Drafts"}</>)}
+            {loading ? (<><span className="animate-spin">️</span> Processing...</>) : (<>{isPublic ? "🌍 Publish to Marketplace" : "💾 Save to Drafts"}</>)}
           </button>
         </form>
       </div>
