@@ -1,4 +1,4 @@
-"use client";
+a"use client";
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -7,27 +7,20 @@ import toast from "react-hot-toast";
 
 // THE GLOBAL CURRENCY MAP (100+ Countries)
 const currencyMap: Record<string, { symbol: string; code: string }> = {
-  // Major Global
   "USA": { symbol: "$", code: "USD" }, "United States": { symbol: "$", code: "USD" },
   "UK": { symbol: "£", code: "GBP" }, "United Kingdom": { symbol: "£", code: "GBP" },
   "Canada": { symbol: "C$", code: "CAD" }, "Australia": { symbol: "A$", code: "AUD" },
   "New Zealand": { symbol: "NZ$", code: "NZD" }, "China": { symbol: "¥", code: "CNY" },
   "Japan": { symbol: "¥", code: "JPY" }, "South Korea": { symbol: "₩", code: "KRW" },
-  
-  // South Asia
   "Nepal": { symbol: "Rs.", code: "NPR" }, "India": { symbol: "₹", code: "INR" },
   "Pakistan": { symbol: "Rs.", code: "PKR" }, "Bangladesh": { symbol: "৳", code: "BDT" },
   "Sri Lanka": { symbol: "Rs.", code: "LKR" }, "Afghanistan": { symbol: "؋", code: "AFN" },
-  
-  // Southeast Asia & Pacific
   "Singapore": { symbol: "S$", code: "SGD" }, "Malaysia": { symbol: "RM", code: "MYR" },
   "Indonesia": { symbol: "Rp", code: "IDR" }, "Thailand": { symbol: "฿", code: "THB" },
   "Vietnam": { symbol: "₫", code: "VND" }, "Philippines": { symbol: "₱", code: "PHP" },
   "Myanmar": { symbol: "K", code: "MMK" }, "Cambodia": { symbol: "៛", code: "KHR" },
   "Laos": { symbol: "₭", code: "LAK" }, "Mongolia": { symbol: "₮", code: "MNT" },
   "Papua New Guinea": { symbol: "K", code: "PGK" }, "Fiji": { symbol: "FJ$", code: "FJD" },
-
-  // Middle East & North Africa (MENA)
   "UAE": { symbol: "د.إ", code: "AED" }, "Saudi Arabia": { symbol: "﷼", code: "SAR" },
   "Qatar": { symbol: "﷼", code: "QAR" }, "Kuwait": { symbol: "د.ك", code: "KWD" },
   "Oman": { symbol: "﷼", code: "OMR" }, "Bahrain": { symbol: ".د.ب", code: "BHD" },
@@ -36,16 +29,12 @@ const currencyMap: Record<string, { symbol: string; code: string }> = {
   "Algeria": { symbol: "د.ج", code: "DZD" }, "Tunisia": { symbol: "د.ت", code: "TND" },
   "Jordan": { symbol: "د.ا", code: "JOD" }, "Lebanon": { symbol: "ل.ل", code: "LBP" },
   "Iraq": { symbol: "ع.د", code: "IQD" }, "Iran": { symbol: "﷼", code: "IRR" },
-
-  // Sub-Saharan Africa (Emerging Markets)
   "South Africa": { symbol: "R", code: "ZAR" }, "Nigeria": { symbol: "₦", code: "NGN" },
   "Kenya": { symbol: "KSh", code: "KES" }, "Ghana": { symbol: "₵", code: "GHS" },
   "Ethiopia": { symbol: "Br", code: "ETB" }, "Tanzania": { symbol: "TSh", code: "TZS" },
   "Uganda": { symbol: "USh", code: "UGX" }, "Rwanda": { symbol: "RF", code: "RWF" },
   "Senegal": { symbol: "CFA", code: "XOF" }, "Cameroon": { symbol: "FCFA", code: "XAF" },
   "Ivory Coast": { symbol: "CFA", code: "XOF" }, "Madagascar": { symbol: "Ar", code: "MGA" },
-
-  // Europe (Non-Euro & Eastern)
   "Switzerland": { symbol: "CHF", code: "CHF" }, "Sweden": { symbol: "kr", code: "SEK" },
   "Norway": { symbol: "kr", code: "NOK" }, "Denmark": { symbol: "kr", code: "DKK" },
   "Poland": { symbol: "zł", code: "PLN" }, "Russia": { symbol: "₽", code: "RUB" },
@@ -53,20 +42,14 @@ const currencyMap: Record<string, { symbol: string; code: string }> = {
   "Bulgaria": { symbol: "лв", code: "BGN" }, "Hungary": { symbol: "Ft", code: "HUF" },
   "Czech Republic": { symbol: "Kč", code: "CZK" }, "Serbia": { symbol: "din", code: "RSD" },
   "Iceland": { symbol: "kr", code: "ISK" },
-
-  // Eurozone
   "Germany": { symbol: "€", code: "EUR" }, "France": { symbol: "€", code: "EUR" },
   "Italy": { symbol: "€", code: "EUR" }, "Spain": { symbol: "€", code: "EUR" },
   "Netherlands": { symbol: "€", code: "EUR" }, "Belgium": { symbol: "€", code: "EUR" },
   "Austria": { symbol: "€", code: "EUR" }, "Portugal": { symbol: "€", code: "EUR" },
   "Greece": { symbol: "€", code: "EUR" }, "Finland": { symbol: "€", code: "EUR" },
-
-  // Central Asia & Caucasus
   "Kazakhstan": { symbol: "₸", code: "KZT" }, "Uzbekistan": { symbol: "лв", code: "UZS" },
   "Azerbaijan": { symbol: "₼", code: "AZN" }, "Georgia": { symbol: "₾", code: "GEL" },
   "Armenia": { symbol: "֏", code: "AMD" },
-
-  // South America & Caribbean
   "Brazil": { symbol: "R$", code: "BRL" }, "Argentina": { symbol: "$", code: "ARS" },
   "Mexico": { symbol: "$", code: "MXN" }, "Colombia": { symbol: "$", code: "COP" },
   "Chile": { symbol: "$", code: "CLP" }, "Peru": { symbol: "S/.", code: "PEN" },
@@ -74,7 +57,6 @@ const currencyMap: Record<string, { symbol: string; code: string }> = {
   "Paraguay": { symbol: "₲", code: "PYG" }, "Uruguay": { symbol: "$U", code: "UYU" },
   "Ecuador": { symbol: "$", code: "USD" }, "Dominican Republic": { symbol: "RD$", code: "DOP" },
   "Jamaica": { symbol: "J$", code: "JMD" }, "Trinidad and Tobago": { symbol: "TT$", code: "TTD" },
-
   "default": { symbol: "$", code: "USD" }
 };
 
@@ -99,16 +81,9 @@ export default function GeneratePage() {
       if (session) {
         const { data: profile } = await supabase.from("profiles").select("country").eq("id", session.user.id).single();
         if (profile && profile.country) {
-          // BULLETPROOF MATCHING: Removes spaces and forces lowercase
           const userCountry = profile.country.trim().toLowerCase();
-          
-          const matchedKey = Object.keys(currencyMap).find(
-            key => key.toLowerCase() === userCountry
-          );
-          
-          if (matchedKey) {
-            setCurrency(currencyMap[matchedKey]);
-          }
+          const matchedKey = Object.keys(currencyMap).find(key => key.toLowerCase() === userCountry);
+          if (matchedKey) setCurrency(currencyMap[matchedKey]);
         }
       }
     };
@@ -154,8 +129,8 @@ export default function GeneratePage() {
       const { data: profile } = await supabase.from("profiles").select("plan").eq("id", session.user.id).single();
       const { count } = await supabase.from("listings").select("*", { count: 'exact', head: true }).eq("user_id", session.user.id).eq("status", "Available");
       
-      if (profile?.plan === 'free' && count >= 3) {
-        toast.error(" Free Plan Limit Reached! Upgrade to Pro for unlimited listings.");
+      if (profile?.plan === 'free' && (count || 0) >= 3) {
+        toast.error("🚫 Free Plan Limit Reached! Upgrade to Pro for unlimited listings.");
         setLoading(false);
         router.push("/pricing");
         return;
@@ -175,17 +150,45 @@ export default function GeneratePage() {
         publicUrls.push(publicUrl);
       }
 
+      // Ensure status matches visibility
+      const finalStatus = isPublic ? "Available" : "Draft";
+
       const { error: dbError } = await supabase.from('listings').insert({
-        user_id: session.user.id, product_name: title, image_url: publicUrls[0], image_urls: publicUrls,
-        ai_title: `${title} - ${condition}`, ai_bullets: ["High Quality", "Fast Shipping", "Satisfaction Guaranteed"],
-        ai_description: description, cost_price: parseFloat(costPrice) || 0, sale_price: parseFloat(salePrice) || 0,
-        status: status, is_public: isPublic, latitude: userLat, longitude: userLng, is_pinned: false,
+        user_id: session.user.id, 
+        product_name: title, 
+        image_url: publicUrls[0], 
+        image_urls: publicUrls,
+        ai_title: `${title} - ${condition}`, 
+        ai_bullets: ["High Quality", "Fast Shipping", "Satisfaction Guaranteed"],
+        ai_description: description, 
+        cost_price: parseFloat(costPrice) || 0, 
+        sale_price: parseFloat(salePrice) || 0,
+        status: finalStatus, 
+        is_public: isPublic, 
+        latitude: userLat, 
+        longitude: userLng, 
+        is_pinned: false,
         currency_code: currency.code 
       });
 
-      if (dbError) { toast.error("Error saving listing."); } 
-      else { toast.success(isPublic ? "Published!" : "Saved to Drafts!"); router.push("/my-listings"); }
-    } catch (error) { toast.error("Something went wrong."); }
+      if (dbError) { 
+        toast.error("Error saving listing: " + dbError.message); 
+      } else { 
+        // EXPLICIT SUCCESS POPUPS
+        if (isPublic) {
+          toast.success("🌍 Published to Public Marketplace!");
+        } else {
+          toast.success("💾 Saved to Drafts successfully!");
+        }
+        
+        // 1.5 SECOND DELAY SO THE USER ACTUALLY SEES THE POPUP BEFORE REDIRECT
+        setTimeout(() => {
+          router.push("/my-listings");
+        }, 1500);
+      }
+    } catch (error: any) { 
+      toast.error("Something went wrong: " + error.message); 
+    }
     setLoading(false);
   };
 
@@ -261,7 +264,7 @@ export default function GeneratePage() {
           </div>
 
           <button type="submit" disabled={loading} className="w-full p-4 bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold rounded-xl transition disabled:opacity-50 flex justify-center items-center gap-2">
-            {loading ? (<><span className="animate-spin">⚙️</span> Publishing...</>) : (<>{isPublic ? "🌍 Publish to Marketplace" : "💾 Save to Drafts"}</>)}
+            {loading ? (<><span className="animate-spin">⚙️</span> Processing...</>) : (<>{isPublic ? "🌍 Publish to Marketplace" : "💾 Save to Drafts"}</>)}
           </button>
         </form>
       </div>
