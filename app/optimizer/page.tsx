@@ -67,10 +67,17 @@ export default function OptimizerPage() {
 
       // 2. Apply Rule-Based Formatting (NO AI)
       const keywordList = keywords.split(',').map(k => k.trim()).filter(k => k !== "");
+      
       const formattedData = rawData.map((row: any, index: number) => {
-        const baseName = row['Product Name'] || row['name'] || row['title'] || "Unknown Product";
-        const baseDesc = row['Description'] || row['description'] || "High quality product.";
-        
+        // BULLETPROOF CASE-INSENSITIVE FETCHING
+        const baseName = row['Product Name'] || row['product name'] || row['name'] || row['title'] || "Unknown Product";
+        const baseDesc = row['Description'] || row['description'] || row['desc'] || "High quality product.";
+        const basePrice = row['Price'] || row['price'] || row['cost'] || "0";
+        const baseBrand = row['Brand'] || row['brand'] || "Generic";
+        const baseSku = row['SKU'] || row['sku'] || `SKU-${index}`;
+        const baseVendor = row['Vendor'] || row['vendor'] || row['Brand'] || "My Store";
+        const baseType = row['Type'] || row['type'] || "General";
+
         let formattedTitle = baseName;
         let formattedDesc = baseDesc;
 
@@ -89,17 +96,17 @@ export default function OptimizerPage() {
           return { 
             name: formattedTitle, 
             short_description: formattedDesc.substring(0, 500),
-            brand: row['brand'] || "Generic",
-            sku: row['sku'] || `SKU-${index}`,
-            price: row['price'] || "0"
+            brand: baseBrand,
+            sku: baseSku,
+            price: basePrice
           };
         } else if (platform === "shopify") {
           return {
             Handle: baseName.toLowerCase().replace(/\s+/g, '-'),
             Title: formattedTitle.substring(0, 255),
             "Body (HTML)": `<p>${formattedDesc}</p>`,
-            Vendor: row['vendor'] || "My Store",
-            Type: row['type'] || "General",
+            Vendor: baseVendor,
+            Type: baseType,
             Tags: keywordList.join(', ')
           };
         } else if (platform === "amazon") {
@@ -108,7 +115,7 @@ export default function OptimizerPage() {
             "item-name": formattedTitle,
             "bullet-point-1": `✅ ${formattedDesc.split('.')[0]}.`,
             "bullet-point-2": `✅ High-quality materials and durable construction.`,
-            "price": row['price'] || "0.00"
+            "price": basePrice
           };
         } else {
           // Etsy / Default
@@ -116,7 +123,7 @@ export default function OptimizerPage() {
             Title: formattedTitle.substring(0, 140),
             Description: formattedDesc,
             Tags: keywordList.slice(0, 13).join(', '), // Etsy max 13 tags
-            Price: row['price'] || "0.00"
+            Price: basePrice
           };
         }
       });
