@@ -10,7 +10,7 @@ export default function OptimizerPage() {
   const [file, setFile] = useState<File | null>(null);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({
-    productName: "", description: "", price: "", brand: "", sku: ""
+    productName: "", description: "", price: "", brand: "", sku: "", image: "", stock: ""
   });
   const [platform, setPlatform] = useState("daraz");
   const [tone, setTone] = useState("professional");
@@ -71,19 +71,19 @@ export default function OptimizerPage() {
       setFile(uploadedFile);
       setProcessedData([]);
       
-      // Read headers immediately to populate mapping dropdowns
       uploadedFile.text().then(text => {
         const { headers } = parseCSV(text);
         setCsvHeaders(headers);
         
-        // Auto-guess mappings to save the user time
         const guess = (keywords: string[]) => headers.find(h => keywords.some(k => h.toLowerCase().includes(k))) || "";
         setColumnMapping({
           productName: guess(['name', 'title', 'product']),
           description: guess(['desc', 'description']),
           price: guess(['price', 'cost', 'mrp']),
           brand: guess(['brand', 'vendor', 'manufacturer']),
-          sku: guess(['sku', 'code', 'id'])
+          sku: guess(['sku', 'code', 'id']),
+          image: guess(['image', 'img', 'photo', 'url']),
+          stock: guess(['stock', 'qty', 'quantity', 'inventory'])
         });
       });
     }
@@ -108,18 +108,19 @@ export default function OptimizerPage() {
       const keywordList = keywords.split(',').map(k => k.trim()).filter(k => k !== "");
       
       const formattedData = rawData.map((row: any, index: number) => {
-        // USE MAPPED COLUMNS!
         const baseName = row[columnMapping.productName] || "Unknown Product";
         const baseDesc = row[columnMapping.description] || "High quality product.";
         const basePrice = row[columnMapping.price] || "0";
         const baseBrand = row[columnMapping.brand] || "Generic";
         const baseSku = row[columnMapping.sku] || `SKU-${index}`;
+        const baseImage = row[columnMapping.image] || "";
+        const baseStock = row[columnMapping.stock] || "10";
 
         let formattedTitle = baseName;
         let formattedDesc = baseDesc;
 
         if (tone === "urgent") {
-          formattedTitle = ` HOT DEAL: ${baseName}`;
+          formattedTitle = `🔥 HOT DEAL: ${baseName}`;
           formattedDesc = `⚠️ LIMITED STOCK! ${baseDesc} Hurry, grab this deal before it's gone!`;
         } else if (tone === "minimalist") {
           formattedTitle = baseName.split(' ').slice(0, 6).join(' ');
@@ -127,15 +128,45 @@ export default function OptimizerPage() {
         }
 
         if (platform === "daraz") {
-          formattedTitle = `${formattedTitle} | ${keywordList.slice(0, 3).join(' ')}`.substring(0, 120);
-          return { name: formattedTitle, short_description: formattedDesc.substring(0, 500), brand: baseBrand, sku: baseSku, price: basePrice };
+          return { 
+            name: `${formattedTitle} | ${keywordList.slice(0, 3).join(' ')}`.substring(0, 120), 
+            short_description: formattedDesc.substring(0, 500),
+            brand: baseBrand,
+            sku: baseSku,
+            price: basePrice,
+            quantity: baseStock,
+            "image_url": baseImage
+          };
         } else if (platform === "shopify") {
-          return { Handle: baseName.toLowerCase().replace(/\s+/g, '-'), Title: formattedTitle.substring(0, 255), "Body (HTML)": `<p>${formattedDesc}</p>`, Vendor: baseBrand, Type: "General", Tags: keywordList.join(', ') };
+          return { 
+            Handle: baseName.toLowerCase().replace(/\s+/g, '-'), 
+            Title: formattedTitle.substring(0, 255), 
+            "Body (HTML)": `<p>${formattedDesc}</p>`, 
+            Vendor: baseBrand, 
+            Type: "General", 
+            Tags: keywordList.join(', '),
+            "Image Src": baseImage,
+            "Variant Inventory Qty": baseStock,
+            "Variant Price": basePrice
+          };
         } else if (platform === "amazon") {
-          formattedTitle = `${formattedTitle} - Premium Quality | ${keywordList.slice(0, 5).join(', ')}`.substring(0, 200);
-          return { "item-name": formattedTitle, "bullet-point-1": `✅ ${formattedDesc.split('.')[0]}.`, "bullet-point-2": `✅ High-quality materials and durable construction.`, price: basePrice };
+          return { 
+            "item-name": `${formattedTitle} - Premium Quality | ${keywordList.slice(0, 5).join(', ')}`.substring(0, 200),
+            "bullet-point-1": `✅ ${formattedDesc.split('.')[0]}.`,
+            "bullet-point-2": `✅ High-quality materials and durable construction.`,
+            "price": basePrice,
+            "quantity": baseStock,
+            "image_url": baseImage
+          };
         } else {
-          return { Title: formattedTitle.substring(0, 140), Description: formattedDesc, Tags: keywordList.slice(0, 13).join(', '), Price: basePrice };
+          return { 
+            Title: formattedTitle.substring(0, 140), 
+            Description: formattedDesc, 
+            Tags: keywordList.slice(0, 13).join(', '), 
+            Price: basePrice,
+            "Image URL": baseImage,
+            "Stock": baseStock
+          };
         }
       });
 
@@ -202,21 +233,23 @@ export default function OptimizerPage() {
             </div>
           </div>
 
-          {/* 2. Map Columns (NEW!) */}
+          {/* 2. Map Columns */}
           {csvHeaders.length > 0 && (
             <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
               <h3 className="text-lg font-bold mb-4 text-white">2. Map Your Columns</h3>
               <p className="text-sm text-gray-400 mb-4">Tell us which columns in your CSV match our required fields.</p>
               <div className="grid md:grid-cols-3 gap-4">
-                {['productName', 'description', 'price', 'brand', 'sku'].map((field) => (
+                {['productName', 'description', 'price', 'brand', 'sku', 'image', 'stock'].map((field) => (
                   <div key={field}>
-                    <label className="block text-sm font-medium text-gray-400 mb-2 capitalize">{field.replace(/([A-Z])/g, ' $1').trim()} *</label>
+                    <label className="block text-sm font-medium text-gray-400 mb-2 capitalize">
+                      {field === 'productName' ? 'Product Name *' : field.replace(/([A-Z])/g, ' $1').trim()}
+                    </label>
                     <select 
                       value={columnMapping[field]} 
                       onChange={(e) => setColumnMapping({...columnMapping, [field]: e.target.value})}
                       className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500"
                     >
-                      <option value="">-- Select Column --</option>
+                      <option value="">-- Select Column (Optional) --</option>
                       {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                     </select>
                   </div>
@@ -256,7 +289,7 @@ export default function OptimizerPage() {
             <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
               <div className="p-6 border-b border-gray-800 flex justify-between items-center">
                 <h3 className="text-lg font-bold text-white">4. Preview & Export ({processedData.length} items)</h3>
-                <button onClick={handleExport} className="px-6 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg transition flex items-center gap-2"> Export {platform.toUpperCase()} CSV</button>
+                <button onClick={handleExport} className="px-6 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg transition flex items-center gap-2">📥 Export {platform.toUpperCase()} CSV</button>
               </div>
               <div className="overflow-x-auto max-h-96">
                 <table className="w-full text-left text-sm">
