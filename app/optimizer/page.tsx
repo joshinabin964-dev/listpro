@@ -12,11 +12,11 @@ export default function OptimizerPage() {
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({
     productName: "", description: "", price: "", brand: "", sku: "", image: "", stock: ""
   });
-  // CHANGED DEFAULT TO AMAZON
   const [platform, setPlatform] = useState("amazon"); 
   const [tone, setTone] = useState("professional");
   const [keywords, setKeywords] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [progress, setProgress] = useState(0); // NEW: Progress state
   const [processedData, setProcessedData] = useState<any[]>([]);
   
   const [presets, setPresets] = useState<any[]>([]);
@@ -80,6 +80,7 @@ export default function OptimizerPage() {
       const uploadedFile = e.target.files[0];
       setFile(uploadedFile);
       setProcessedData([]);
+      setProgress(0);
       
       uploadedFile.text().then(text => {
         const { headers } = parseCSV(text);
@@ -105,10 +106,7 @@ export default function OptimizerPage() {
     if (!session) return;
 
     const { error } = await supabase.from("presets").insert({
-      user_id: session.user.id,
-      name: newPresetName,
-      platform, tone, keywords,
-      column_mapping: columnMapping
+      user_id: session.user.id, name: newPresetName, platform, tone, keywords, column_mapping: columnMapping
     });
 
     if (!error) {
@@ -124,10 +122,7 @@ export default function OptimizerPage() {
     if (!selectedPresetId) return;
     const preset = presets.find(p => p.id === selectedPresetId);
     if (preset) {
-      setPlatform(preset.platform);
-      setTone(preset.tone);
-      setKeywords(preset.keywords);
-      setColumnMapping(preset.column_mapping);
+      setPlatform(preset.platform); setTone(preset.tone); setKeywords(preset.keywords); setColumnMapping(preset.column_mapping);
       toast.success(`Loaded preset: ${preset.name}`);
     }
   };
@@ -148,7 +143,9 @@ export default function OptimizerPage() {
     if (credits < 1) { toast.error("Insufficient credits! Please top up."); router.push("/pricing"); return; }
 
     setIsProcessing(true);
-    toast.loading("Processing your listings...");
+    setProgress(0);
+    setProcessedData([]);
+    toast.loading("Starting processing...");
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -159,13 +156,17 @@ export default function OptimizerPage() {
       if (rawData.length === 0) { toast.error("CSV file is empty."); setIsProcessing(false); toast.dismiss(); return; }
 
       const keywordList = keywords.split(',').map(k => k.trim()).filter(k => k !== "");
-      
-      const formattedData = rawData.map((row: any, index: number) => {
+      const totalRows = rawData.length;
+      const formattedData: any[] = [];
+
+      // CHUNKED PROCESSING LOOP FOR LIVE PROGRESS BAR
+      for (let i = 0; i < totalRows; i++) {
+        const row = rawData[i];
         const baseName = row[columnMapping.productName] || "Unknown Product";
         const baseDesc = row[columnMapping.description] || "High quality product.";
         const basePrice = row[columnMapping.price] || "0";
         const baseBrand = row[columnMapping.brand] || "Generic";
-        const baseSku = row[columnMapping.sku] || `SKU-${index}`;
+        const baseSku = row[columnMapping.sku] || `SKU-${i}`;
         const baseImage = row[columnMapping.image] || "";
         const baseStock = row[columnMapping.stock] || "10";
 
@@ -174,62 +175,45 @@ export default function OptimizerPage() {
 
         if (tone === "urgent") {
           formattedTitle = `🔥 HOT DEAL: ${baseName}`;
-          formattedDesc = `⚠️ LIMITED STOCK! ${baseDesc} Hurry, grab this deal before it's gone!`;
+          formattedDesc = `️ LIMITED STOCK! ${baseDesc} Hurry, grab this deal before it's gone!`;
         } else if (tone === "minimalist") {
           formattedTitle = baseName.split(' ').slice(0, 6).join(' ');
           formattedDesc = baseDesc.split('.').slice(0, 2).join('.') + '.';
         }
 
-        // GLOBAL PLATFORM FORMATTING
+        let formattedRow: any = {};
         if (platform === "amazon") {
-          return { 
-            "item-name": `${formattedTitle} - Premium Quality | ${keywordList.slice(0, 5).join(', ')}`.substring(0, 200),
-            "bullet-point-1": `✅ ${formattedDesc.split('.')[0]}.`,
-            "bullet-point-2": `✅ High-quality materials and durable construction.`,
-            "price": basePrice, "quantity": baseStock, "image_url": baseImage 
-          };
+          formattedRow = { "item-name": `${formattedTitle} - Premium Quality | ${keywordList.slice(0, 5).join(', ')}`.substring(0, 200), "bullet-point-1": `✅ ${formattedDesc.split('.')[0]}.`, "bullet-point-2": `✅ High-quality materials and durable construction.`, "price": basePrice, "quantity": baseStock, "image_url": baseImage };
         } else if (platform === "ebay") {
-          return { 
-            "Title": `${formattedTitle} | ${keywordList.slice(0, 3).join(' ')}`.substring(0, 80),
-            "Description": `<p>${formattedDesc}</p>`,
-            "Price": basePrice, "Quantity": baseStock, "SKU": baseSku,
-            "Condition": "New", "Brand": baseBrand, "ImageURL": baseImage
-          };
+          formattedRow = { "Title": `${formattedTitle} | ${keywordList.slice(0, 3).join(' ')}`.substring(0, 80), "Description": `<p>${formattedDesc}</p>`, "Price": basePrice, "Quantity": baseStock, "SKU": baseSku, "Condition": "New", "Brand": baseBrand, "ImageURL": baseImage };
         } else if (platform === "walmart") {
-          return { 
-            "sku": baseSku,
-            "product_name": `${formattedTitle} - ${keywordList.slice(0, 2).join(' ')}`.substring(0, 50),
-            "short_description": formattedDesc.substring(0, 150),
-            "price": basePrice, "brand": baseBrand, "count": baseStock,
-            "image_url": baseImage
-          };
+          formattedRow = { "sku": baseSku, "product_name": `${formattedTitle} - ${keywordList.slice(0, 2).join(' ')}`.substring(0, 50), "short_description": formattedDesc.substring(0, 150), "price": basePrice, "brand": baseBrand, "count": baseStock, "image_url": baseImage };
         } else if (platform === "shopify") {
-          return { 
-            "Handle": baseName.toLowerCase().replace(/\s+/g, '-'), 
-            "Title": formattedTitle.substring(0, 255), 
-            "Body (HTML)": `<p>${formattedDesc}</p>`, 
-            "Vendor": baseBrand, "Type": "General", "Tags": keywordList.join(', '),
-            "Image Src": baseImage, "Variant Inventory Qty": baseStock, "Variant Price": basePrice 
-          };
+          formattedRow = { "Handle": baseName.toLowerCase().replace(/\s+/g, '-'), "Title": formattedTitle.substring(0, 255), "Body (HTML)": `<p>${formattedDesc}</p>`, "Vendor": baseBrand, "Type": "General", "Tags": keywordList.join(', '), "Image Src": baseImage, "Variant Inventory Qty": baseStock, "Variant Price": basePrice };
         } else {
-          // Etsy
-          return { 
-            "Title": formattedTitle.substring(0, 140), 
-            "Description": formattedDesc, 
-            "Tags": keywordList.slice(0, 13).join(', '), 
-            "Price": basePrice, "Image URL": baseImage, "Stock": baseStock 
-          };
+          formattedRow = { "Title": formattedTitle.substring(0, 140), "Description": formattedDesc, "Tags": keywordList.slice(0, 13).join(', '), "Price": basePrice, "Image URL": baseImage, "Stock": baseStock };
         }
-      });
+        
+        formattedData.push(formattedRow);
 
+        // UPDATE UI EVERY 10 ROWS TO PREVENT FREEZING
+        if (i % 10 === 0 || i === totalRows - 1) {
+          const percent = Math.round(((i + 1) / totalRows) * 100);
+          setProgress(percent);
+          // Yield to the browser so the UI can repaint the progress bar
+          await new Promise(resolve => setTimeout(resolve, 0)); 
+        }
+      }
+
+      // DEDUCT CREDIT & SAVE
       const newCredits = credits - 1;
       await supabase.from("profiles").update({ credits: newCredits }).eq("id", session.user.id);
-      await supabase.from("credit_transactions").insert({ user_id: session.user.id, amount: -1, action: `Processed ${formattedData.length} items for ${platform}` });
+      await supabase.from("credit_transactions").insert({ user_id: session.user.id, amount: -1, action: `Processed ${totalRows} items for ${platform}` });
 
       setCredits(newCredits);
       setProcessedData(formattedData);
       toast.dismiss();
-      toast.success(`Successfully processed ${formattedData.length} items! 1 credit used.`);
+      toast.success(`Successfully processed ${totalRows} items! 1 credit used.`);
     } catch (error) {
       toast.dismiss();
       toast.error("Failed to process file.");
@@ -262,7 +246,7 @@ export default function OptimizerPage() {
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <Link href="/dashboard"><h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">ListPro Optimizer</h1></Link>
           <div className="flex items-center gap-4">
-            <div className="px-4 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-yellow-400 font-bold flex items-center gap-2"> {credits} Credits</div>
+            <div className="px-4 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-yellow-400 font-bold flex items-center gap-2">⚡ {credits} Credits</div>
             <Link href="/dashboard"><button className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-sm font-bold rounded-lg transition">Back to Dashboard</button></Link>
           </div>
         </div>
@@ -312,18 +296,13 @@ export default function OptimizerPage() {
           {csvHeaders.length > 0 && (
             <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
               <h3 className="text-lg font-bold mb-4 text-white">2. Map Your Columns</h3>
-              <p className="text-sm text-gray-400 mb-4">Tell us which columns in your CSV match our required fields.</p>
               <div className="grid md:grid-cols-3 gap-4">
                 {['productName', 'description', 'price', 'brand', 'sku', 'image', 'stock'].map((field) => (
                   <div key={field}>
                     <label className="block text-sm font-medium text-gray-400 mb-2 capitalize">
                       {field === 'productName' ? 'Product Name *' : field.replace(/([A-Z])/g, ' $1').trim()}
                     </label>
-                    <select 
-                      value={columnMapping[field]} 
-                      onChange={(e) => setColumnMapping({...columnMapping, [field]: e.target.value})}
-                      className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500"
-                    >
+                    <select value={columnMapping[field]} onChange={(e) => setColumnMapping({...columnMapping, [field]: e.target.value})} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500">
                       <option value="">-- Select Column (Optional) --</option>
                       {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                     </select>
@@ -333,18 +312,14 @@ export default function OptimizerPage() {
             </div>
           )}
 
-          {/* 3. Settings */}
+          {/* 3. Settings & Progress */}
           <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
             <h3 className="text-lg font-bold mb-4 text-white">3. Optimization Settings</h3>
-            <div className="grid md:grid-cols-3 gap-4 mb-4">
+            <div className="grid md:grid-cols-3 gap-4 mb-6">
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-2">Target Platform</label>
                 <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500">
-                  <option value="amazon">Amazon</option>
-                  <option value="ebay">eBay</option>
-                  <option value="walmart">Walmart</option>
-                  <option value="shopify">Shopify</option>
-                  <option value="etsy">Etsy</option>
+                  <option value="amazon">Amazon</option><option value="ebay">eBay</option><option value="walmart">Walmart</option><option value="shopify">Shopify</option><option value="etsy">Etsy</option>
                 </select>
               </div>
               <div>
@@ -358,6 +333,20 @@ export default function OptimizerPage() {
                 <input type="text" value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="wireless, waterproof" className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500" />
               </div>
             </div>
+
+            {/* LIVE PROGRESS BAR */}
+            {isProcessing && (
+              <div className="mb-6">
+                <div className="flex justify-between text-sm font-bold text-blue-400 mb-2">
+                  <span>Processing your listings...</span>
+                  <span>{progress}%</span>
+                </div>
+                <div className="w-full bg-gray-800 rounded-full h-3 overflow-hidden">
+                  <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full transition-all duration-300 ease-out" style={{ width: `${progress}%` }}></div>
+                </div>
+              </div>
+            )}
+
             <button onClick={handleProcess} disabled={isProcessing || !file} className="w-full p-4 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold rounded-xl transition flex justify-center items-center gap-2">
               {isProcessing ? "⚙️ Processing..." : `⚡ Process & Deduct 1 Credit`}
             </button>
@@ -394,15 +383,7 @@ export default function OptimizerPage() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold mb-4 text-white">Save Current Setup</h3>
-            <p className="text-sm text-gray-400 mb-4">This will save your Platform, Tone, Keywords, and Column Mappings.</p>
-            <input 
-              type="text" 
-              value={newPresetName} 
-              onChange={(e) => setNewPresetName(e.target.value)} 
-              placeholder="e.g. My Daily Amazon Upload"
-              className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 mb-4"
-              autoFocus
-            />
+            <input type="text" value={newPresetName} onChange={(e) => setNewPresetName(e.target.value)} placeholder="e.g. My Daily Amazon Upload" className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 mb-4" autoFocus />
             <div className="flex gap-3">
               <button onClick={() => setShowSaveModal(false)} className="flex-1 p-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition">Cancel</button>
               <button onClick={handleSavePreset} className="flex-1 p-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl transition">Save Preset</button>
