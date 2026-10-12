@@ -12,11 +12,18 @@ export default function OptimizerPage() {
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({
     productName: "", description: "", price: "", brand: "", sku: "", image: "", stock: ""
   });
-  const [platform, setPlatform] = useState("daraz");
+  // CHANGED DEFAULT TO AMAZON
+  const [platform, setPlatform] = useState("amazon"); 
   const [tone, setTone] = useState("professional");
   const [keywords, setKeywords] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedData, setProcessedData] = useState<any[]>([]);
+  
+  const [presets, setPresets] = useState<any[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState("");
+  const [newPresetName, setNewPresetName] = useState("");
+  const [showSaveModal, setShowSaveModal] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
@@ -24,13 +31,16 @@ export default function OptimizerPage() {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/login"); return; }
+      
       const { data: profile } = await supabase.from("profiles").select("credits").eq("id", session.user.id).single();
       if (profile) setCredits(profile.credits || 0);
+
+      const { data: presetData } = await supabase.from("presets").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false });
+      if (presetData) setPresets(presetData);
     };
     checkUser();
   }, [router]);
 
-  // BULLETPROOF CSV PARSER
   const parseCSV = (text: string) => {
     const result: string[][] = [];
     let row: string[] = [];
@@ -89,6 +99,49 @@ export default function OptimizerPage() {
     }
   };
 
+  const handleSavePreset = async () => {
+    if (!newPresetName.trim()) { toast.error("Please enter a name for your preset."); return; }
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    const { error } = await supabase.from("presets").insert({
+      user_id: session.user.id,
+      name: newPresetName,
+      platform, tone, keywords,
+      column_mapping: columnMapping
+    });
+
+    if (!error) {
+      toast.success("Preset saved successfully!");
+      setNewPresetName("");
+      setShowSaveModal(false);
+      const { data: presetData } = await supabase.from("presets").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false });
+      if (presetData) setPresets(presetData);
+    } else { toast.error("Failed to save preset."); }
+  };
+
+  const handleLoadPreset = () => {
+    if (!selectedPresetId) return;
+    const preset = presets.find(p => p.id === selectedPresetId);
+    if (preset) {
+      setPlatform(preset.platform);
+      setTone(preset.tone);
+      setKeywords(preset.keywords);
+      setColumnMapping(preset.column_mapping);
+      toast.success(`Loaded preset: ${preset.name}`);
+    }
+  };
+
+  const handleDeletePreset = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this preset?")) return;
+    const { error } = await supabase.from("presets").delete().eq("id", id);
+    if (!error) {
+      setPresets(presets.filter(p => p.id !== id));
+      if (selectedPresetId === id) setSelectedPresetId("");
+      toast.success("Preset deleted.");
+    }
+  };
+
   const handleProcess = async () => {
     if (!file) { toast.error("Please upload a CSV file first."); return; }
     if (!columnMapping.productName) { toast.error("Please map the 'Product Name' column."); return; }
@@ -127,45 +180,44 @@ export default function OptimizerPage() {
           formattedDesc = baseDesc.split('.').slice(0, 2).join('.') + '.';
         }
 
-        if (platform === "daraz") {
-          return { 
-            name: `${formattedTitle} | ${keywordList.slice(0, 3).join(' ')}`.substring(0, 120), 
-            short_description: formattedDesc.substring(0, 500),
-            brand: baseBrand,
-            sku: baseSku,
-            price: basePrice,
-            quantity: baseStock,
-            "image_url": baseImage
-          };
-        } else if (platform === "shopify") {
-          return { 
-            Handle: baseName.toLowerCase().replace(/\s+/g, '-'), 
-            Title: formattedTitle.substring(0, 255), 
-            "Body (HTML)": `<p>${formattedDesc}</p>`, 
-            Vendor: baseBrand, 
-            Type: "General", 
-            Tags: keywordList.join(', '),
-            "Image Src": baseImage,
-            "Variant Inventory Qty": baseStock,
-            "Variant Price": basePrice
-          };
-        } else if (platform === "amazon") {
+        // GLOBAL PLATFORM FORMATTING
+        if (platform === "amazon") {
           return { 
             "item-name": `${formattedTitle} - Premium Quality | ${keywordList.slice(0, 5).join(', ')}`.substring(0, 200),
             "bullet-point-1": `✅ ${formattedDesc.split('.')[0]}.`,
             "bullet-point-2": `✅ High-quality materials and durable construction.`,
-            "price": basePrice,
-            "quantity": baseStock,
+            "price": basePrice, "quantity": baseStock, "image_url": baseImage 
+          };
+        } else if (platform === "ebay") {
+          return { 
+            "Title": `${formattedTitle} | ${keywordList.slice(0, 3).join(' ')}`.substring(0, 80),
+            "Description": `<p>${formattedDesc}</p>`,
+            "Price": basePrice, "Quantity": baseStock, "SKU": baseSku,
+            "Condition": "New", "Brand": baseBrand, "ImageURL": baseImage
+          };
+        } else if (platform === "walmart") {
+          return { 
+            "sku": baseSku,
+            "product_name": `${formattedTitle} - ${keywordList.slice(0, 2).join(' ')}`.substring(0, 50),
+            "short_description": formattedDesc.substring(0, 150),
+            "price": basePrice, "brand": baseBrand, "count": baseStock,
             "image_url": baseImage
           };
-        } else {
+        } else if (platform === "shopify") {
           return { 
-            Title: formattedTitle.substring(0, 140), 
-            Description: formattedDesc, 
-            Tags: keywordList.slice(0, 13).join(', '), 
-            Price: basePrice,
-            "Image URL": baseImage,
-            "Stock": baseStock
+            "Handle": baseName.toLowerCase().replace(/\s+/g, '-'), 
+            "Title": formattedTitle.substring(0, 255), 
+            "Body (HTML)": `<p>${formattedDesc}</p>`, 
+            "Vendor": baseBrand, "Type": "General", "Tags": keywordList.join(', '),
+            "Image Src": baseImage, "Variant Inventory Qty": baseStock, "Variant Price": basePrice 
+          };
+        } else {
+          // Etsy
+          return { 
+            "Title": formattedTitle.substring(0, 140), 
+            "Description": formattedDesc, 
+            "Tags": keywordList.slice(0, 13).join(', '), 
+            "Price": basePrice, "Image URL": baseImage, "Stock": baseStock 
           };
         }
       });
@@ -210,7 +262,7 @@ export default function OptimizerPage() {
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <Link href="/dashboard"><h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">ListPro Optimizer</h1></Link>
           <div className="flex items-center gap-4">
-            <div className="px-4 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-yellow-400 font-bold flex items-center gap-2">⚡ {credits} Credits</div>
+            <div className="px-4 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-yellow-400 font-bold flex items-center gap-2"> {credits} Credits</div>
             <Link href="/dashboard"><button className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-sm font-bold rounded-lg transition">Back to Dashboard</button></Link>
           </div>
         </div>
@@ -219,7 +271,7 @@ export default function OptimizerPage() {
       <div className="max-w-5xl mx-auto px-6 py-12">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Bulk Listing Optimizer</h1>
-          <p className="text-gray-400 text-lg">Upload your raw CSV. Map your columns. Get platform-perfect listings in seconds.</p>
+          <p className="text-gray-400 text-lg">Upload your raw CSV. Map your columns. Get platform-perfect listings for the world's biggest marketplaces.</p>
         </div>
 
         <div className="space-y-6">
@@ -231,6 +283,29 @@ export default function OptimizerPage() {
               <span className="text-3xl mb-2">📁</span>
               <span className="text-gray-400 text-sm font-medium">{file ? file.name : "Click to upload .csv"}</span>
             </div>
+          </div>
+
+          {/* Saved Presets */}
+          <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-white">💾 Saved Presets</h3>
+              <button onClick={() => setShowSaveModal(true)} className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-lg transition">+ Save Current Setup</button>
+            </div>
+            {presets.length > 0 ? (
+              <div className="flex flex-wrap gap-3 items-center">
+                {presets.map((preset) => (
+                  <div key={preset.id} className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition ${selectedPresetId === preset.id ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'bg-gray-800 border-gray-700 hover:border-gray-600 text-gray-300'}`}>
+                    <input type="radio" name="preset" checked={selectedPresetId === preset.id} onChange={() => setSelectedPresetId(preset.id)} className="accent-blue-500" />
+                    <span className="text-sm font-medium">{preset.name}</span>
+                    <span className="text-xs text-gray-500">({preset.platform})</span>
+                    <button onClick={(e) => { e.stopPropagation(); handleDeletePreset(preset.id); }} className="ml-2 text-red-400 hover:text-red-300 font-bold">×</button>
+                  </div>
+                ))}
+                <button onClick={handleLoadPreset} disabled={!selectedPresetId} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-bold rounded-lg transition ml-auto">Load Selected</button>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No saved presets yet. Configure your settings below and click "Save Current Setup".</p>
+            )}
           </div>
 
           {/* 2. Map Columns */}
@@ -265,7 +340,11 @@ export default function OptimizerPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-2">Target Platform</label>
                 <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500">
-                  <option value="daraz">Daraz</option><option value="shopify">Shopify</option><option value="amazon">Amazon</option><option value="etsy">Etsy</option>
+                  <option value="amazon">Amazon</option>
+                  <option value="ebay">eBay</option>
+                  <option value="walmart">Walmart</option>
+                  <option value="shopify">Shopify</option>
+                  <option value="etsy">Etsy</option>
                 </select>
               </div>
               <div>
@@ -309,6 +388,28 @@ export default function OptimizerPage() {
           )}
         </div>
       </div>
+
+      {/* Save Preset Modal */}
+      {showSaveModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h3 className="text-xl font-bold mb-4 text-white">Save Current Setup</h3>
+            <p className="text-sm text-gray-400 mb-4">This will save your Platform, Tone, Keywords, and Column Mappings.</p>
+            <input 
+              type="text" 
+              value={newPresetName} 
+              onChange={(e) => setNewPresetName(e.target.value)} 
+              placeholder="e.g. My Daily Amazon Upload"
+              className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 mb-4"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button onClick={() => setShowSaveModal(false)} className="flex-1 p-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition">Cancel</button>
+              <button onClick={handleSavePreset} className="flex-1 p-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl transition">Save Preset</button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
