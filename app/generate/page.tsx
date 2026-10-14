@@ -1,4 +1,4 @@
-"use client",
+"use client";
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -12,8 +12,8 @@ const currencyMap: Record<string, { symbol: string; code: string }> = {
   "Canada": { symbol: "C$", code: "CAD" }, "Australia": { symbol: "A$", code: "AUD" },
   "New Zealand": { symbol: "NZ$", code: "NZD" }, "China": { symbol: "¥", code: "CNY" },
   "Japan": { symbol: "¥", code: "JPY" }, "South Korea": { symbol: "₩", code: "KRW" },
-  "Nepal": { symbol: "Rs.", code: "NPR" }, "India": { symbol: "₹", code: "INR" },
-  "Pakistan": { symbol: "Rs.", code: "PKR" }, "Bangladesh": { symbol: "৳", code: "BDT" },
+  "Nepal": { symbol: "Rs.", code: "NPR" }, "India": { symbol: "", code: "INR" },
+  "Pakistan": { symbol: "Rs.", code: "PKR" }, "Bangladesh": { symbol: "", code: "BDT" },
   "Sri Lanka": { symbol: "Rs.", code: "LKR" }, "Afghanistan": { symbol: "؋", code: "AFN" },
   "Singapore": { symbol: "S$", code: "SGD" }, "Malaysia": { symbol: "RM", code: "MYR" },
   "Indonesia": { symbol: "Rp", code: "IDR" }, "Thailand": { symbol: "฿", code: "THB" },
@@ -21,10 +21,10 @@ const currencyMap: Record<string, { symbol: string; code: string }> = {
   "Myanmar": { symbol: "K", code: "MMK" }, "Cambodia": { symbol: "៛", code: "KHR" },
   "Laos": { symbol: "₭", code: "LAK" }, "Mongolia": { symbol: "₮", code: "MNT" },
   "Papua New Guinea": { symbol: "K", code: "PGK" }, "Fiji": { symbol: "FJ$", code: "FJD" },
-  "UAE": { symbol: "د.إ", code: "AED" }, "Saudi Arabia": { symbol: "", code: "SAR" },
-  "Qatar": { symbol: "", code: "QAR" }, "Kuwait": { symbol: "د.ك", code: "KWD" },
+  "UAE": { symbol: "د.إ", code: "AED" }, "Saudi Arabia": { symbol: "﷼", code: "SAR" },
+  "Qatar": { symbol: "﷼", code: "QAR" }, "Kuwait": { symbol: "د.ك", code: "KWD" },
   "Oman": { symbol: "﷼", code: "OMR" }, "Bahrain": { symbol: ".د.ب", code: "BHD" },
-  "Israel": { symbol: "", code: "ILS" }, "Turkey": { symbol: "₺", code: "TRY" },
+  "Israel": { symbol: "₪", code: "ILS" }, "Turkey": { symbol: "₺", code: "TRY" },
   "Egypt": { symbol: "£", code: "EGP" }, "Morocco": { symbol: "د.م.", code: "MAD" },
   "Algeria": { symbol: "د.ج", code: "DZD" }, "Tunisia": { symbol: "د.ت", code: "TND" },
   "Jordan": { symbol: "د.ا", code: "JOD" }, "Lebanon": { symbol: "ل.ل", code: "LBP" },
@@ -130,7 +130,7 @@ export default function GeneratePage() {
       const { count } = await supabase.from("listings").select("*", { count: 'exact', head: true }).eq("user_id", session.user.id).eq("status", "Available");
       
       if (profile?.plan === 'free' && (count || 0) >= 3) {
-        toast.error(" Free Plan Limit Reached! Upgrade to Pro for unlimited listings.");
+        toast.error("🚫 Free Plan Limit Reached! Upgrade to Pro for unlimited listings.");
         setLoading(false);
         router.push("/pricing");
         return;
@@ -176,7 +176,7 @@ export default function GeneratePage() {
       } else { 
         // EXPLICIT SUCCESS POPUPS
         if (isPublic) {
-          toast.success("🌍 Published to Public Marketplace!");
+          toast.success(" Published to Public Marketplace!");
         } else {
           toast.success("💾 Saved to Drafts successfully!");
         }
@@ -205,7 +205,7 @@ export default function GeneratePage() {
             <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" multiple className="hidden" />
             {imagePreviews.length === 0 ? (
               <div onClick={() => fileInputRef.current?.click()} className="w-full h-48 border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-gray-800/50 transition">
-                <span className="text-4xl mb-2">📷</span><span className="text-gray-400 font-medium">Click to upload photos</span>
+                <span className="text-4xl mb-2"></span><span className="text-gray-400 font-medium">Click to upload photos</span>
               </div>
             ) : (
               <div className="space-y-4">
@@ -264,7 +264,7 @@ export default function GeneratePage() {
           </div>
 
           <button type="submit" disabled={loading} className="w-full p-4 bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold rounded-xl transition disabled:opacity-50 flex justify-center items-center gap-2">
-            {loading ? (<><span className="animate-spin">️</span> Processing...</>) : (<>{isPublic ? "🌍 Publish to Marketplace" : "💾 Save to Drafts"}</>)}
+            {loading ? (<><span className="animate-spin">⚙️</span> Processing...</>) : (<>{isPublic ? "🌍 Publish to Marketplace" : "💾 Save to Drafts"}</>)}
           </button>
         </form>
       </div>
