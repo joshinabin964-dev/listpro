@@ -21,6 +21,7 @@ export default function MarketplacePage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     const initData = async () => {
@@ -39,11 +40,16 @@ export default function MarketplacePage() {
 
   const fetchListings = async (term: string) => {
     setLoading(true);
-    let query = supabase.from("listings").select("*, profiles(full_name)").eq("status", "Active");
     
-    // SMART SEARCH: Looks in BOTH Title and Description for ANY item
+    // FIX: Look for 'Active' status OR 'is_public' = true to catch everything published
+    let query = supabase
+      .from("listings")
+      .select("*, profiles(full_name)")
+      .or("status.eq.Active,is_public.eq.true");
+    
+    // FIX: Search using the EXACT column names from your Generate page (product_name, ai_description)
     if (term) {
-      query = query.or(`title.ilike.%${term}%,description.ilike.%${term}%`);
+      query = query.or(`product_name.ilike.%${term}%,ai_description.ilike.%${term}%,description.ilike.%${term}%`);
     }
 
     const { data, error } = await query.order("created_at", { ascending: false });
@@ -122,7 +128,6 @@ export default function MarketplacePage() {
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {listings.map((listing) => (
-              // THIS LINK TAKES YOU TO THE DETAILS PAGE WHEN CLICKED
               <Link key={listing.id} href={`/listing/${listing.id}`} className="block group">
                 <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden hover:border-blue-500 transition relative h-full flex flex-col">
                   {/* Distance Badge */}
@@ -134,17 +139,21 @@ export default function MarketplacePage() {
                   
                   <div className="aspect-square bg-gray-800 overflow-hidden">
                     {listing.image_url ? (
-                      <img src={listing.image_url} alt={listing.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                      <img src={listing.image_url} alt={listing.product_name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-600">No Image</div>
                     )}
                   </div>
                   <div className="p-5 flex-1 flex flex-col">
                     <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-bold text-white text-lg truncate pr-2">{listing.title}</h3>
-                      <span className="text-blue-400 font-bold text-lg whitespace-nowrap">${listing.sale_price}</span>
+                      {/* FIX: Use product_name instead of title */}
+                      <h3 className="font-bold text-white text-lg truncate pr-2">{listing.product_name || listing.title}</h3>
+                      <span className="text-blue-400 font-bold text-lg whitespace-nowrap">
+                        {listing.currency_code === 'NPR' ? 'Rs. ' : '$'}{listing.sale_price}
+                      </span>
                     </div>
-                    <p className="text-gray-500 text-sm mb-4 line-clamp-2">{listing.description || "No description provided."}</p>
+                    {/* FIX: Use ai_description or description */}
+                    <p className="text-gray-500 text-sm mb-4 line-clamp-2">{listing.ai_description || listing.description || "No description provided."}</p>
                     <div className="mt-auto flex justify-between items-center text-xs text-gray-600 pt-4 border-t border-gray-800">
                       <span>by {listing.profiles?.full_name || "Seller"}</span>
                       <span>{listing.condition || "Used"}</span>
