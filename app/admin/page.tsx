@@ -18,7 +18,7 @@ export default function AdminPage() {
       if (!session) { router.push("/login"); return; }
 
       // SECURITY: Replace with your actual admin email before launch!
-      const adminEmails = ["your-email@example.com"]; 
+      const adminEmails = ["joshinabin964@gmail.com"]; 
       
       const { data: profile } = await supabase.from("profiles").select("email").eq("id", session.user.id).single();
       
