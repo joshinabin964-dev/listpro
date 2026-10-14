@@ -17,7 +17,7 @@ const currencyMap: Record<string, { symbol: string; code: string }> = {
   "Singapore": { symbol: "S$", code: "SGD" }, "Malaysia": { symbol: "RM", code: "MYR" },
   "Indonesia": { symbol: "Rp", code: "IDR" }, "Thailand": { symbol: "฿", code: "THB" },
   "Vietnam": { symbol: "₫", code: "VND" }, "Philippines": { symbol: "₱", code: "PHP" },
-  "UAE": { symbol: "د.إ", code: "AED" }, "Saudi Arabia": { symbol: "", code: "SAR" },
+  "UAE": { symbol: "د.إ", code: "AED" }, "Saudi Arabia": { symbol: "﷼", code: "SAR" },
   "Qatar": { symbol: "﷼", code: "QAR" }, "Kuwait": { symbol: "د.ك", code: "KWD" },
   "Oman": { symbol: "﷼", code: "OMR" }, "Israel": { symbol: "₪", code: "ILS" },
   "Turkey": { symbol: "₺", code: "TRY" }, "Egypt": { symbol: "£", code: "EGP" },
@@ -60,7 +60,23 @@ export default function MyListingsPage() {
 
       const { data: listingsData } = await supabase.from("listings").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false });
       if (!listingsData) { setLoading(false); return; }
-      setListings(listingsData);
+
+      // AUTO-EXPIRE OLD LISTINGS (Older than 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      const expiredIds = listingsData
+        .filter(l => new Date(l.created_at) < thirtyDaysAgo && (l.status === 'Available' || l.status === 'Active'))
+        .map(l => l.id);
+
+      let finalListings = listingsData;
+      if (expiredIds.length > 0) {
+        await supabase.from("listings").update({ status: 'Expired' }).in("id", expiredIds);
+        finalListings = listingsData.map(l => 
+          expiredIds.includes(l.id) ? { ...l, status: 'Expired' } : l
+        );
+      }
+      setListings(finalListings);
 
       const { data: offersData } = await supabase.from("offers").select("*").eq("seller_id", session.user.id).eq("status", "pending");
       const offersMap: any = {};
@@ -87,12 +103,23 @@ export default function MyListingsPage() {
     setDeletingId(null);
   };
 
+  const handleMarkAsSold = async (id: string) => {
+    if (!confirm("Mark this item as Sold? It will be hidden from the public marketplace.")) return;
+    const { error } = await supabase.from("listings").update({ status: 'Sold' }).eq("id", id);
+    if (!error) {
+      setListings(listings.map(l => l.id === id ? { ...l, status: 'Sold' } : l));
+      toast.success("🎉 Marked as Sold!");
+    } else {
+      toast.error("Error marking as sold.");
+    }
+  };
+
   const handlePin = async (id: string, currentPinStatus: boolean) => {
     if (userPlan !== 'pro') { toast.error("🔒 Pin to Top is a Pro feature! Upgrade to use this."); router.push("/pricing"); return; }
     const { error } = await supabase.from("listings").update({ is_pinned: !currentPinStatus }).eq("id", id);
     if (!error) {
       setListings(listings.map(l => l.id === id ? { ...l, is_pinned: !currentPinStatus } : l));
-      toast.success(!currentPinStatus ? " Pinned to top!" : "Unpinned.");
+      toast.success(!currentPinStatus ? "📌 Pinned to top!" : "Unpinned.");
     }
   };
 
@@ -158,21 +185,24 @@ export default function MyListingsPage() {
             {listings.map((listing) => {
               const hasOffers = offersByListing[listing.id] && offersByListing[listing.id].length > 0;
               const isViewingOffers = viewingOffersFor === listing.id;
-              const symbol = getSymbol(listing.currency_code); // Get the correct symbol
+              const symbol = getSymbol(listing.currency_code);
 
               return (
                 <div key={listing.id} className={`group bg-gray-900 rounded-2xl border overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 flex flex-col relative ${listing.is_pinned ? 'border-yellow-500/50 ring-1 ring-yellow-500/20' : 'border-gray-800 hover:border-gray-700'}`}>
                   <div className="relative aspect-[4/3] bg-gray-800 overflow-hidden">
                     <img src={listing.image_url} alt={listing.product_name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                    <div className={`absolute top-4 right-4 backdrop-blur-md px-3 py-1 rounded-full border ${listing.status === 'Sold' ? 'bg-green-600/90 border-green-400' : listing.status === 'Pending' ? 'bg-yellow-600/90 border-yellow-400' : 'bg-gray-950/80 border-gray-700'}`}>
+                    
+                    {/* UPDATED BADGE LOGIC TO INCLUDE EXPIRED */}
+                    <div className={`absolute top-4 right-4 backdrop-blur-md px-3 py-1 rounded-full border ${listing.status === 'Sold' ? 'bg-green-600/90 border-green-400' : listing.status === 'Pending' ? 'bg-yellow-600/90 border-yellow-400' : listing.status === 'Expired' ? 'bg-gray-600/90 border-gray-400' : 'bg-gray-950/80 border-gray-700'}`}>
                       <span className="text-xs font-bold text-white uppercase">{listing.status}</span>
                     </div>
+
                     {listing.is_pinned && (
                       <div className="absolute top-4 left-4 bg-yellow-500/90 backdrop-blur-md px-3 py-1 rounded-full border border-yellow-300">
                         <span className="text-xs font-bold text-white uppercase">📌 Pinned</span>
                       </div>
                     )}
-                    {listing.is_public && listing.status !== 'Sold' && !listing.is_pinned && (
+                    {listing.is_public && listing.status !== 'Sold' && listing.status !== 'Expired' && !listing.is_pinned && (
                       <div className="absolute top-4 left-4 bg-purple-600/90 backdrop-blur-md px-3 py-1 rounded-full border border-purple-400">
                         <span className="text-xs font-bold text-white uppercase"> Public</span>
                       </div>
@@ -187,7 +217,6 @@ export default function MyListingsPage() {
                   <div className="p-6 flex-grow flex flex-col">
                     <h3 className="text-xl font-bold text-white mb-2 line-clamp-1">{listing.ai_title?.split(' - ')[0] || listing.product_name}</h3>
                     <div className="flex items-baseline gap-1 mb-4">
-                      {/* UPDATED: Dynamic Currency Symbols */}
                       <span className="text-3xl font-bold text-blue-400">{symbol}{listing.sale_price}</span>
                       {listing.cost_price > 0 && <span className="text-sm text-gray-500">(Cost: {symbol}{listing.cost_price})</span>}
                     </div>
@@ -219,7 +248,15 @@ export default function MyListingsPage() {
                             </div>
                           )}
                           <div className="flex gap-2 flex-wrap">
-                            <button onClick={() => handlePin(listing.id, listing.is_pinned)} className={`px-3 py-3 rounded-xl text-sm font-bold transition border flex justify-center items-center gap-1 ${listing.is_pinned ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20 hover:bg-yellow-500 hover:text-white' : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white'}`}></button>
+                            <button onClick={() => handlePin(listing.id, listing.is_pinned)} className={`px-3 py-3 rounded-xl text-sm font-bold transition border flex justify-center items-center gap-1 ${listing.is_pinned ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20 hover:bg-yellow-500 hover:text-white' : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white'}`}>📌</button>
+                            
+                            {/* NEW MARK AS SOLD BUTTON */}
+                            {listing.status !== 'Sold' && listing.status !== 'Expired' && (
+                              <button onClick={() => handleMarkAsSold(listing.id)} className="px-4 py-3 bg-green-600/10 hover:bg-green-600 text-green-400 hover:text-white rounded-xl text-sm font-bold transition border border-green-500/20 flex justify-center items-center gap-2">
+                                ✅ Mark Sold
+                              </button>
+                            )}
+
                             {hasOffers && (
                               <button onClick={() => setViewingOffersFor(listing.id)} className="flex-1 px-4 py-3 bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white rounded-xl text-sm font-bold transition border border-green-500/20 flex justify-center items-center gap-2">💰 View Offers</button>
                             )}
