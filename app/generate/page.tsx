@@ -137,8 +137,13 @@ export default function GeneratePage() {
       }
 
       const { data: userLoc } = await supabase.from("profiles").select("latitude, longitude, country").eq("id", session.user.id).single();
-      const userLat = userLoc?.latitude || null;
-      const userLng = userLoc?.longitude || null;
+      
+      // 🔒 PRIVACY FIX: Round coordinates to 2 decimal places (~1km accuracy)
+      // This prevents exact house location tracking while keeping distance search functional.
+      const rawLat = userLoc?.latitude;
+      const rawLng = userLoc?.longitude;
+      const userLat = rawLat ? Math.round(rawLat * 100) / 100 : null;
+      const userLng = rawLng ? Math.round(rawLng * 100) / 100 : null;
 
       const publicUrls: string[] = [];
       for (const file of imageFiles) {
@@ -150,7 +155,6 @@ export default function GeneratePage() {
         publicUrls.push(publicUrl);
       }
 
-      // FIX: Use "Active" for published items so they show in marketplace
       const finalStatus = isPublic ? "Active" : "Draft";
 
       const { error: dbError } = await supabase.from('listings').insert({
@@ -174,14 +178,12 @@ export default function GeneratePage() {
       if (dbError) { 
         toast.error("Error saving listing: " + dbError.message); 
       } else { 
-        // SUCCESS POPUPS
         if (isPublic) {
           toast.success("🌍 Published to Public Marketplace!");
         } else {
           toast.success("💾 Saved to Drafts successfully!");
         }
         
-        // REDIRECT AFTER 1.5 SECONDS
         setTimeout(() => {
           router.push("/my-listings");
         }, 1500);
