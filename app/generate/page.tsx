@@ -12,8 +12,8 @@ const currencyMap: Record<string, { symbol: string; code: string }> = {
   "Canada": { symbol: "C$", code: "CAD" }, "Australia": { symbol: "A$", code: "AUD" },
   "New Zealand": { symbol: "NZ$", code: "NZD" }, "China": { symbol: "¥", code: "CNY" },
   "Japan": { symbol: "¥", code: "JPY" }, "South Korea": { symbol: "₩", code: "KRW" },
-  "Nepal": { symbol: "Rs.", code: "NPR" }, "India": { symbol: "", code: "INR" },
-  "Pakistan": { symbol: "Rs.", code: "PKR" }, "Bangladesh": { symbol: "", code: "BDT" },
+  "Nepal": { symbol: "Rs.", code: "NPR" }, "India": { symbol: "₹", code: "INR" },
+  "Pakistan": { symbol: "Rs.", code: "PKR" }, "Bangladesh": { symbol: "৳", code: "BDT" },
   "Sri Lanka": { symbol: "Rs.", code: "LKR" }, "Afghanistan": { symbol: "؋", code: "AFN" },
   "Singapore": { symbol: "S$", code: "SGD" }, "Malaysia": { symbol: "RM", code: "MYR" },
   "Indonesia": { symbol: "Rp", code: "IDR" }, "Thailand": { symbol: "฿", code: "THB" },
@@ -127,7 +127,7 @@ export default function GeneratePage() {
       if (!session) { toast.error("Please log in first."); setLoading(false); return; }
 
       const { data: profile } = await supabase.from("profiles").select("plan").eq("id", session.user.id).single();
-      const { count } = await supabase.from("listings").select("*", { count: 'exact', head: true }).eq("user_id", session.user.id).eq("status", "Available");
+      const { count } = await supabase.from("listings").select("*", { count: 'exact', head: true }).eq("user_id", session.user.id).eq("status", "Active");
       
       if (profile?.plan === 'free' && (count || 0) >= 3) {
         toast.error("🚫 Free Plan Limit Reached! Upgrade to Pro for unlimited listings.");
@@ -150,8 +150,8 @@ export default function GeneratePage() {
         publicUrls.push(publicUrl);
       }
 
-      // Ensure status matches visibility
-      const finalStatus = isPublic ? "Available" : "Draft";
+      // FIX: Use "Active" for published items so they show in marketplace
+      const finalStatus = isPublic ? "Active" : "Draft";
 
       const { error: dbError } = await supabase.from('listings').insert({
         user_id: session.user.id, 
@@ -174,14 +174,14 @@ export default function GeneratePage() {
       if (dbError) { 
         toast.error("Error saving listing: " + dbError.message); 
       } else { 
-        // EXPLICIT SUCCESS POPUPS
+        // SUCCESS POPUPS
         if (isPublic) {
-          toast.success(" Published to Public Marketplace!");
+          toast.success("🌍 Published to Public Marketplace!");
         } else {
           toast.success("💾 Saved to Drafts successfully!");
         }
         
-        // 1.5 SECOND DELAY SO THE USER ACTUALLY SEES THE POPUP BEFORE REDIRECT
+        // REDIRECT AFTER 1.5 SECONDS
         setTimeout(() => {
           router.push("/my-listings");
         }, 1500);
@@ -205,7 +205,7 @@ export default function GeneratePage() {
             <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" multiple className="hidden" />
             {imagePreviews.length === 0 ? (
               <div onClick={() => fileInputRef.current?.click()} className="w-full h-48 border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-gray-800/50 transition">
-                <span className="text-4xl mb-2"></span><span className="text-gray-400 font-medium">Click to upload photos</span>
+                <span className="text-4xl mb-2">📷</span><span className="text-gray-400 font-medium">Click to upload photos</span>
               </div>
             ) : (
               <div className="space-y-4">
