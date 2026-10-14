@@ -60,6 +60,57 @@ const currencyMap: Record<string, { symbol: string; code: string }> = {
   "default": { symbol: "$", code: "USD" }
 };
 
+// 📸 PHOTO COMPRESSION HELPER (Shrinks images by ~70-80% before upload)
+const compressImage = async (file: File): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const MAX_DIMENSION = 1200; // Max width/height to prevent huge uploads
+
+        if (width > height && width > MAX_DIMENSION) {
+          height *= MAX_DIMENSION / width;
+          width = MAX_DIMENSION;
+        } else if (height > MAX_DIMENSION) {
+          width *= MAX_DIMENSION / height;
+          height = MAX_DIMENSION;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('Could not get canvas context')); return; }
+        
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const compressedFile = new File([blob], file.name, {
+                type: blob.type,
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            } else {
+              reject(new Error('Canvas toBlob failed'));
+            }
+          },
+          file.type === 'image/png' ? 'image/png' : 'image/jpeg',
+          0.75 // 75% quality is the perfect balance of size vs visual fidelity
+        );
+      };
+      img.onerror = (error) => reject(error);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
+
 export default function GeneratePage() {
   const [title, setTitle] = useState("");
   const [salePrice, setSalePrice] = useState("");
@@ -139,7 +190,6 @@ export default function GeneratePage() {
       const { data: userLoc } = await supabase.from("profiles").select("latitude, longitude, country").eq("id", session.user.id).single();
       
       // 🔒 PRIVACY FIX: Round coordinates to 2 decimal places (~1km accuracy)
-      // This prevents exact house location tracking while keeping distance search functional.
       const rawLat = userLoc?.latitude;
       const rawLng = userLoc?.longitude;
       const userLat = rawLat ? Math.round(rawLat * 100) / 100 : null;
@@ -147,9 +197,21 @@ export default function GeneratePage() {
 
       const publicUrls: string[] = [];
       for (const file of imageFiles) {
-        const fileExt = file.name.split('.').pop();
+        let fileToUpload = file;
+        
+        // 📸 COMPRESSION TRIGGER: Shrink image before sending to Supabase
+        if (file.type.startsWith('image/')) {
+          try {
+            fileToUpload = await compressImage(file);
+          } catch (err) {
+            console.error("Compression failed, using original file", err);
+          }
+        }
+
+        const fileExt = fileToUpload.name.split('.').pop() || 'jpg';
         const fileName = `${session.user.id}-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage.from('product-images').upload(fileName, file);
+        
+        const { error: uploadError } = await supabase.storage.from('product-images').upload(fileName, fileToUpload);
         if (uploadError) { toast.error("Image upload failed."); setLoading(false); return; }
         const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fileName);
         publicUrls.push(publicUrl);
