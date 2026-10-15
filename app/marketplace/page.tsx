@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371; 
@@ -19,14 +21,32 @@ export default function MarketplacePage() {
   const [distanceFilter, setDistanceFilter] = useState<string>("all");
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // ❤️ NEW: State for saved items
+  const [savedListingIds, setSavedListingIds] = useState<string[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const router = useRouter();
 
   useEffect(() => {
     const initData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
+        setCurrentUser(session.user);
+        
+        // Fetch user's location
         const { data: profile } = await supabase.from("profiles").select("latitude, longitude").eq("id", session.user.id).single();
         if (profile && profile.latitude && profile.longitude) {
           setUserLocation({ lat: profile.latitude, lng: profile.longitude });
+        }
+
+        // ❤️ Fetch user's saved items
+        const { data: savedData } = await supabase
+          .from("saved_items")
+          .select("listing_id")
+          .eq("user_id", session.user.id);
+        
+        if (savedData) {
+          setSavedListingIds(savedData.map((item: any) => item.listing_id));
         }
       }
       await fetchListings("");
@@ -38,7 +58,6 @@ export default function MarketplacePage() {
   const fetchListings = async (term: string) => {
     setLoading(true);
     
-    // PRODUCTION CODE: Only show public items that are Available OR Active
     let query = supabase
       .from("listings")
       .select("*")
@@ -73,10 +92,52 @@ export default function MarketplacePage() {
     setLoading(false);
   };
 
+  // ❤️ NEW: Toggle Save/Unsave Function
+  const handleToggleSave = async (e: React.MouseEvent, listingId: string) => {
+    e.preventDefault(); // Prevent the Link from navigating
+    e.stopPropagation();
+
+    if (!currentUser) {
+      toast.error("Please log in to save items.");
+      router.push("/login");
+      return;
+    }
+
+    const isSaved = savedListingIds.includes(listingId);
+
+    if (isSaved) {
+      // Remove from saved
+      const { error } = await supabase
+        .from("saved_items")
+        .delete()
+        .eq("user_id", currentUser.id)
+        .eq("listing_id", listingId);
+
+      if (!error) {
+        setSavedListingIds(prev => prev.filter(id => id !== listingId));
+        toast.success("Removed from saved items");
+      } else {
+        toast.error("Failed to remove item.");
+      }
+    } else {
+      // Add to saved
+      const { error } = await supabase
+        .from("saved_items")
+        .insert({ user_id: currentUser.id, listing_id: listingId });
+
+      if (!error) {
+        setSavedListingIds(prev => [...prev, listingId]);
+        toast.success("Saved to wishlist! ❤️");
+      } else {
+        toast.error("Failed to save item.");
+      }
+    }
+  };
+
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); fetchListings(searchTerm); };
   const handleClearSearch = () => { setSearchTerm(""); setDistanceFilter("all"); fetchListings(""); };
 
-  if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><p>Loading...</p></main>;
+  if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><p>Loading Marketplace...</p></main>;
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
@@ -112,27 +173,49 @@ export default function MarketplacePage() {
           </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {listings.map((listing) => (
-              <Link key={listing.id} href={`/listing/${listing.id}`} className="block group">
-                <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden hover:border-blue-500 transition relative h-full flex flex-col">
-                  {listing.distance < 9999 && (<div className="absolute top-4 right-4 bg-black/70 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-green-400 border border-green-500/30 z-10">📍 {listing.distance.toFixed(1)} km</div>)}
-                  <div className="aspect-square bg-gray-800 overflow-hidden">
-                    {listing.image_url ? (<img src={listing.image_url} alt={listing.product_name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />) : (<div className="w-full h-full flex items-center justify-center text-gray-600">No Image</div>)}
-                  </div>
-                  <div className="p-5 flex-1 flex flex-col">
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-bold text-white text-lg truncate pr-2">{listing.product_name || listing.title}</h3>
-                      <span className="text-blue-400 font-bold text-lg whitespace-nowrap">{listing.currency_code === 'NPR' ? 'Rs. ' : '$'}{listing.sale_price}</span>
+            {listings.map((listing) => {
+              const isSaved = savedListingIds.includes(listing.id);
+              
+              return (
+                <Link key={listing.id} href={`/listing/${listing.id}`} className="block group">
+                  <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden hover:border-blue-500 transition relative h-full flex flex-col">
+                    
+                    {/* ❤️ NEW: Heart Toggle Button */}
+                    <button
+                      onClick={(e) => handleToggleSave(e, listing.id)}
+                      className="absolute top-4 left-4 z-20 p-2 bg-black/60 backdrop-blur-md rounded-full text-white hover:bg-red-600/80 transition"
+                      title={isSaved ? "Remove from saved" : "Save to wishlist"}
+                    >
+                      {isSaved ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                        </svg>
+                      )}
+                    </button>
+
+                    {listing.distance < 9999 && (<div className="absolute top-4 right-4 bg-black/70 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-green-400 border border-green-500/30 z-10">📍 {listing.distance.toFixed(1)} km</div>)}
+                    <div className="aspect-square bg-gray-800 overflow-hidden">
+                      {listing.image_url ? (<img src={listing.image_url} alt={listing.product_name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />) : (<div className="w-full h-full flex items-center justify-center text-gray-600">No Image</div>)}
                     </div>
-                    <p className="text-gray-500 text-sm mb-4 line-clamp-2">{listing.ai_description || listing.description || "No description provided."}</p>
-                    <div className="mt-auto flex justify-between items-center text-xs text-gray-600 pt-4 border-t border-gray-800">
-                      <span>by Seller</span>
-                      <span>{listing.condition || "Used"}</span>
+                    <div className="p-5 flex-1 flex flex-col">
+                      <div className="flex justify-between items-start mb-2">
+                        <h3 className="font-bold text-white text-lg truncate pr-2">{listing.product_name || listing.title}</h3>
+                        <span className="text-blue-400 font-bold text-lg whitespace-nowrap">{listing.currency_code === 'NPR' ? 'Rs. ' : '$'}{listing.sale_price}</span>
+                      </div>
+                      <p className="text-gray-500 text-sm mb-4 line-clamp-2">{listing.ai_description || listing.description || "No description provided."}</p>
+                      <div className="mt-auto flex justify-between items-center text-xs text-gray-600 pt-4 border-t border-gray-800">
+                        <span>by Seller</span>
+                        <span>{listing.condition || "Used"}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>
