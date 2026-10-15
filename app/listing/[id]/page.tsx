@@ -63,15 +63,13 @@ export default function ListingDetailsPage() {
     
     setIsBlocking(true);
     try {
-      // In a real app, you'd save this to a 'blocked_users' table. 
-      // For now, we'll use localStorage to hide them on the client side.
       const blockedList = JSON.parse(localStorage.getItem('blockedUsers') || '[]');
       if (!blockedList.includes(listing.user_id)) {
         blockedList.push(listing.user_id);
         localStorage.setItem('blockedUsers', JSON.stringify(blockedList));
       }
       toast.success("🚫 User blocked successfully.");
-      router.push("/marketplace"); // Redirect away
+      router.push("/marketplace");
     } catch (error) {
       toast.error("Failed to block user.");
     }
@@ -130,13 +128,22 @@ export default function ListingDetailsPage() {
               </div>
             )}
 
-            {/* Action Buttons */}
-            <div className="flex gap-4 mt-auto">
-              <button className="flex-1 p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-lg">
-                 Contact Seller
-              </button>
+            {/* Action Buttons - UPDATED WITH LIVE CHAT LINK */}
+            <div className="flex flex-wrap gap-4 mt-auto">
+              {currentUser && currentUser.id !== listing.user_id ? (
+                <Link 
+                  href={`/chat/${listing.id}?user=${listing.user_id}`} 
+                  className="flex-1 min-w-[200px] p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-lg flex items-center justify-center gap-2 text-center"
+                >
+                  💬 Message Seller
+                </Link>
+              ) : (
+                <div className="flex-1 min-w-[200px] p-4 bg-gray-800 text-gray-400 font-bold rounded-xl text-lg text-center border border-gray-700">
+                  {currentUser?.id === listing.user_id ? "This is your listing" : "Log in to message"}
+                </div>
+              )}
               
-              {/* NEW: Report & Block Buttons */}
+              {/* Report & Block Buttons */}
               {currentUser && currentUser.id !== listing.user_id && (
                 <>
                   <button 
