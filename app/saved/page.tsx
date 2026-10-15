@@ -19,39 +19,46 @@ export default function SavedItemsPage() {
         return;
       }
 
-      // Fetch saved items and join with the listings table to get product details
-      const { data, error } = await supabase
-        .from("saved_items")
-        .select(`
-          id,
-          listing_id,
-          listings (
-            id,
-            product_name,
-            title,
-            sale_price,
-            currency_code,
-            image_url,
-            image_urls,
-            ai_description,
-            description,
-            condition,
-            status
-          )
-        `)
-        .eq("user_id", session.user.id)
-        .order("created_at", { ascending: false });
+      try {
+        // Step 1: Fetch saved_items for this user
+        const { data: savedData, error: savedError } = await supabase
+          .from("saved_items")
+          .select("id, listing_id")
+          .eq("user_id", session.user.id)
+          .order("created_at", { ascending: false });
 
-      if (error) {
+        if (savedError) throw savedError;
+
+        if (!savedData || savedData.length === 0) {
+          setSavedListings([]);
+          setLoading(false);
+          return;
+        }
+
+        // Step 2: Extract listing IDs
+        const listingIds = savedData.map(item => item.listing_id);
+
+        // Step 3: Fetch the actual listings
+        const { data: listingsData, error: listingsError } = await supabase
+          .from("listings")
+          .select("*")
+          .in("id", listingIds);
+
+        if (listingsError) throw listingsError;
+
+        // Step 4: Combine the data
+        const formattedListings = listingsData?.map((listing: any) => {
+          const savedItem = savedData.find(s => s.listing_id === listing.id);
+          return {
+            saved_id: savedItem?.id,
+            ...listing
+          };
+        }) || [];
+
+        setSavedListings(formattedListings);
+      } catch (error) {
         console.error("Error fetching saved items:", error);
         toast.error("Failed to load saved items.");
-      } else if (data) {
-        // Flatten the data for easier rendering
-        const formattedListings = data.map((item: any) => ({
-          saved_id: item.id,
-          ...item.listings
-        }));
-        setSavedListings(formattedListings);
       }
       setLoading(false);
     };
@@ -71,7 +78,6 @@ export default function SavedItemsPage() {
       toast.error("Failed to remove item.");
     } else {
       toast.success("Removed from saved items!");
-      // Update local state to remove the item instantly without reloading
       setSavedListings((prev) => prev.filter((item) => item.saved_id !== savedId));
     }
     setRemovingId(null);
