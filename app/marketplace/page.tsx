@@ -19,7 +19,7 @@ function deg2rad(deg: number) { return deg * (Math.PI / 180); }
 export default function MarketplacePage() {
   const [listings, setListings] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [distanceFilter, setDistanceFilter] = useState<string>("all"); // NEW: Distance filter state
+  const [distanceFilter, setDistanceFilter] = useState<string>("all");
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -42,10 +42,12 @@ export default function MarketplacePage() {
   const fetchListings = async (term: string) => {
     setLoading(true);
     
+    // 🔒 BULLETPROOF FIX: Strict AND logic. Must be public AND active.
     let query = supabase
       .from("listings")
       .select("*, profiles(full_name)")
-      .or("status.eq.Active,is_public.eq.true");
+      .eq("is_public", true)
+      .eq("status", "Active");
     
     if (term) {
       query = query.or(`product_name.ilike.%${term}%,ai_description.ilike.%${term}%,description.ilike.%${term}%`);
@@ -62,13 +64,11 @@ export default function MarketplacePage() {
         return { ...listing, distance: 9999 };
       });
 
-      // NEW: Filter by selected distance
       const filteredListings = listingsWithDistance.filter((listing: any) => {
         if (distanceFilter === "all") return true;
         return listing.distance <= Number(distanceFilter);
       });
 
-      // Sort by distance (nearest first)
       filteredListings.sort((a: any, b: any) => a.distance - b.distance);
       setListings(filteredListings);
     } else {
@@ -84,7 +84,7 @@ export default function MarketplacePage() {
 
   const handleClearSearch = () => {
     setSearchTerm("");
-    setDistanceFilter("all"); // Reset distance filter when clearing search
+    setDistanceFilter("all");
     fetchListings("");
   };
 
@@ -110,7 +110,6 @@ export default function MarketplacePage() {
           <p className="text-gray-400 text-lg">Discover unique items listed by the ListPro community.</p>
         </div>
 
-        {/* Search and Distance Filter Bar */}
         <form onSubmit={handleSearch} className="max-w-4xl mx-auto mb-12 flex flex-col md:flex-row gap-4">
           <input
             type="text"
@@ -120,12 +119,11 @@ export default function MarketplacePage() {
             className="flex-1 p-4 bg-gray-900 border border-gray-800 rounded-xl text-white focus:outline-none focus:border-blue-500"
           />
           
-          {/* NEW: Distance Selector Dropdown */}
           <select 
             value={distanceFilter} 
             onChange={(e) => {
               setDistanceFilter(e.target.value);
-              fetchListings(searchTerm); // Re-filter immediately when changed
+              fetchListings(searchTerm);
             }}
             className="w-full md:w-48 p-4 bg-gray-900 border border-gray-800 rounded-xl text-white focus:outline-none focus:border-blue-500 cursor-pointer"
           >
@@ -141,7 +139,6 @@ export default function MarketplacePage() {
           )}
         </form>
 
-        {/* Results Grid */}
         {listings.length === 0 ? (
           <div className="text-center py-20 bg-gray-900 rounded-2xl border border-gray-800">
             <p className="text-2xl text-gray-400 mb-6">No items found matching your search and distance.</p>
@@ -152,7 +149,6 @@ export default function MarketplacePage() {
             {listings.map((listing) => (
               <Link key={listing.id} href={`/listing/${listing.id}`} className="block group">
                 <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden hover:border-blue-500 transition relative h-full flex flex-col">
-                  {/* Distance Badge (Updated to KM) */}
                   {listing.distance < 9999 && (
                     <div className="absolute top-4 right-4 bg-black/70 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-green-400 border border-green-500/30 z-10">
                       📍 {listing.distance.toFixed(1)} km
