@@ -22,7 +22,6 @@ export default function MarketplacePage() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // ❤️ NEW: State for saved items
   const [savedListingIds, setSavedListingIds] = useState<string[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const router = useRouter();
@@ -33,13 +32,11 @@ export default function MarketplacePage() {
       if (session) {
         setCurrentUser(session.user);
         
-        // Fetch user's location
         const { data: profile } = await supabase.from("profiles").select("latitude, longitude").eq("id", session.user.id).single();
         if (profile && profile.latitude && profile.longitude) {
           setUserLocation({ lat: profile.latitude, lng: profile.longitude });
         }
 
-        // ❤️ Fetch user's saved items
         const { data: savedData } = await supabase
           .from("saved_items")
           .select("listing_id")
@@ -92,9 +89,8 @@ export default function MarketplacePage() {
     setLoading(false);
   };
 
-  // ❤️ NEW: Toggle Save/Unsave Function
   const handleToggleSave = async (e: React.MouseEvent, listingId: string) => {
-    e.preventDefault(); // Prevent the Link from navigating
+    e.preventDefault();
     e.stopPropagation();
 
     if (!currentUser) {
@@ -106,7 +102,6 @@ export default function MarketplacePage() {
     const isSaved = savedListingIds.includes(listingId);
 
     if (isSaved) {
-      // Remove from saved
       const { error } = await supabase
         .from("saved_items")
         .delete()
@@ -120,7 +115,6 @@ export default function MarketplacePage() {
         toast.error("Failed to remove item.");
       }
     } else {
-      // Add to saved
       const { error } = await supabase
         .from("saved_items")
         .insert({ user_id: currentUser.id, listing_id: listingId });
@@ -137,7 +131,20 @@ export default function MarketplacePage() {
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); fetchListings(searchTerm); };
   const handleClearSearch = () => { setSearchTerm(""); setDistanceFilter("all"); fetchListings(""); };
 
-  if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><p>Loading Marketplace...</p></main>;
+  // ✨ NEW: Premium Loading State
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative w-16 h-16">
+            <div className="absolute top-0 left-0 w-full h-full border-4 border-gray-800 rounded-full"></div>
+            <div className="absolute top-0 left-0 w-full h-full border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
+          </div>
+          <p className="text-gray-400 font-medium animate-pulse">Loading Marketplace...</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
@@ -180,7 +187,6 @@ export default function MarketplacePage() {
                 <Link key={listing.id} href={`/listing/${listing.id}`} className="block group">
                   <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden hover:border-blue-500 transition relative h-full flex flex-col">
                     
-                    {/* ❤️ NEW: Heart Toggle Button */}
                     <button
                       onClick={(e) => handleToggleSave(e, listing.id)}
                       className="absolute top-4 left-4 z-20 p-2 bg-black/60 backdrop-blur-md rounded-full text-white hover:bg-red-600/80 transition"
