@@ -19,7 +19,7 @@ export default function DashboardPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/login"); return; }
 
-      // 1. Get Profile & Stats (Added full_name to the select)
+      // 1. Get Profile & Stats
       const { data: profile } = await supabase.from("profiles").select("plan, country, latitude, longitude, full_name").eq("id", session.user.id).single();
       if (profile) {
         setPlan(profile.plan || "free");
@@ -130,7 +130,6 @@ export default function DashboardPage() {
       </nav>
 
       <div className="max-w-6xl mx-auto px-6 py-12">
-        {/* UPDATED: Personalized Welcome Message */}
         <h1 className="text-4xl font-bold mb-2">Welcome back{userName ? `, ${userName}` : ''}!</h1>
         <p className="text-gray-400 text-lg mb-8">Here is your business overview.</p>
 
@@ -160,7 +159,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* UPDATED GRID: Now 6 cards for a perfect 3x2 layout */}
+        {/* UPDATED GRID: Now 7 cards, beautifully flowing in the grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Link href="/generate" className="block">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-blue-500 transition cursor-pointer group">
@@ -191,7 +190,15 @@ export default function DashboardPage() {
             </div>
           </Link>
           
-          {/* NEW: PROFILE CARD */}
+          {/* NEW: SAVED ITEMS CARD */}
+          <Link href="/saved" className="block">
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-red-500 transition cursor-pointer group">
+              <span className="text-4xl mb-4 block">❤️</span>
+              <h3 className="text-2xl font-bold mb-2 group-hover:text-red-400 transition">Saved Items</h3>
+              <p className="text-gray-400">View your wishlisted products.</p>
+            </div>
+          </Link>
+
           <Link href="/profile" className="block">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-pink-500 transition cursor-pointer group">
               <span className="text-4xl mb-4 block">👤</span>
