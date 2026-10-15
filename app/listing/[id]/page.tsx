@@ -13,6 +13,9 @@ export default function ListingDetailsPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
+  // 📸 NEW: State for the image gallery
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  
   // Report & Block State
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState("Spam");
@@ -28,6 +31,10 @@ export default function ListingDetailsPage() {
       const { data: listingData } = await supabase.from("listings").select("*").eq("id", id).single();
       if (listingData) {
         setListing(listingData);
+        
+        // 📸 Set the first available image as the default selected image
+        const firstImage = listingData.image_url || (listingData.image_urls && listingData.image_urls[0]);
+        setSelectedImage(firstImage || null);
         
         // Fetch Seller Profile
         const { data: sellerData } = await supabase.from("profiles").select("*").eq("id", listingData.user_id).single();
@@ -92,12 +99,33 @@ export default function ListingDetailsPage() {
 
       <div className="max-w-6xl mx-auto px-6 py-12">
         <div className="grid md:grid-cols-2 gap-12">
-          {/* Image Section */}
-          <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden aspect-square flex items-center justify-center">
-            {listing.image_url ? (
-              <img src={listing.image_url} alt={listing.product_name} className="w-full h-full object-contain" />
-            ) : (
-              <div className="text-gray-600 text-xl">No Image Available</div>
+          
+          {/* 📸 UPDATED IMAGE GALLERY SECTION */}
+          <div className="space-y-4">
+            {/* Main Image */}
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden aspect-square flex items-center justify-center">
+              {selectedImage ? (
+                <img src={selectedImage} alt={listing.product_name} className="w-full h-full object-contain" />
+              ) : (
+                <div className="text-gray-600 text-xl">No Image Available</div>
+              )}
+            </div>
+
+            {/* Thumbnails (Only show if there are multiple images in the image_urls array) */}
+            {listing.image_urls && listing.image_urls.length > 1 && (
+              <div className="grid grid-cols-5 gap-3">
+                {listing.image_urls.map((url: string, index: number) => (
+                  <button
+                    key={index}
+                    onClick={() => setSelectedImage(url)}
+                    className={`aspect-square rounded-xl overflow-hidden border-2 transition ${
+                      selectedImage === url ? 'border-blue-500' : 'border-gray-800 hover:border-gray-600'
+                    }`}
+                  >
+                    <img src={url} alt={`Thumbnail ${index}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 
@@ -128,7 +156,7 @@ export default function ListingDetailsPage() {
               </div>
             )}
 
-            {/* Action Buttons - UPDATED WITH LIVE CHAT LINK */}
+            {/* Action Buttons */}
             <div className="flex flex-wrap gap-4 mt-auto">
               {currentUser && currentUser.id !== listing.user_id ? (
                 <Link 
