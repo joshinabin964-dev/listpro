@@ -11,6 +11,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [userName, setUserName] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -18,9 +19,12 @@ export default function DashboardPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/login"); return; }
 
-      // 1. Get Profile & Stats
-      const { data: profile } = await supabase.from("profiles").select("plan, country, latitude, longitude").eq("id", session.user.id).single();
-      if (profile) setPlan(profile.plan || "free");
+      // 1. Get Profile & Stats (Added full_name to the select)
+      const { data: profile } = await supabase.from("profiles").select("plan, country, latitude, longitude, full_name").eq("id", session.user.id).single();
+      if (profile) {
+        setPlan(profile.plan || "free");
+        setUserName(profile.full_name);
+      }
 
       const { data: listings } = await supabase.from("listings").select("sale_price, cost_price, status").eq("user_id", session.user.id);
       if (listings) {
@@ -126,7 +130,8 @@ export default function DashboardPage() {
       </nav>
 
       <div className="max-w-6xl mx-auto px-6 py-12">
-        <h1 className="text-4xl font-bold mb-2">Welcome back!</h1>
+        {/* UPDATED: Personalized Welcome Message */}
+        <h1 className="text-4xl font-bold mb-2">Welcome back{userName ? `, ${userName}` : ''}!</h1>
         <p className="text-gray-400 text-lg mb-8">Here is your business overview.</p>
 
         <LocationSetup />
@@ -155,7 +160,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* UPDATED GRID: Changed to 3 columns on large screens to fit 5 cards perfectly */}
+        {/* UPDATED GRID: Now 6 cards for a perfect 3x2 layout */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Link href="/generate" className="block">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-blue-500 transition cursor-pointer group">
@@ -178,15 +183,23 @@ export default function DashboardPage() {
               <p className="text-gray-400">Browse items listed by the community.</p>
             </div>
           </Link>
-          <Link href="/inquiries" className="block">
+          <Link href="/inbox" className="block">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-yellow-500 transition cursor-pointer group">
-              <span className="text-4xl mb-4 block"></span>
+              <span className="text-4xl mb-4 block">💬</span>
               <h3 className="text-2xl font-bold mb-2 group-hover:text-yellow-400 transition">My Inbox</h3>
               <p className="text-gray-400">Read messages from interested buyers.</p>
             </div>
           </Link>
           
-          {/* NEW: BULK OPTIMIZER CARD */}
+          {/* NEW: PROFILE CARD */}
+          <Link href="/profile" className="block">
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-pink-500 transition cursor-pointer group">
+              <span className="text-4xl mb-4 block">👤</span>
+              <h3 className="text-2xl font-bold mb-2 group-hover:text-pink-400 transition">My Profile</h3>
+              <p className="text-gray-400">Update your name and seller details.</p>
+            </div>
+          </Link>
+
           <Link href="/optimizer" className="block">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-cyan-500 transition cursor-pointer group">
               <span className="text-4xl mb-4 block">⚡</span>
