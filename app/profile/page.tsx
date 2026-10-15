@@ -64,7 +64,6 @@ export default function ProfilePage() {
       toast.error("Failed to save profile: " + error.message);
     } else {
       toast.success("Profile updated successfully! 🎉");
-      // Refresh the page to update the dashboard welcome message
       router.refresh(); 
     }
     setSaving(false);
@@ -100,7 +99,7 @@ export default function ProfilePage() {
                 value={formData.full_name}
                 onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                 className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-pink-500 transition"
-                placeholder="e.g. John Doe or Tech Gadgets Nepal"
+                placeholder="e.g. John Doe or Tech Store"
               />
             </div>
 
@@ -113,12 +112,12 @@ export default function ProfilePage() {
                 value={formData.country}
                 onChange={(e) => setFormData({ ...formData, country: e.target.value })}
                 className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-pink-500 transition"
-                placeholder="e.g. Nepal, USA, UK"
+                placeholder="e.g. Nepal, USA, UK, India, Australia..."
               />
               <p className="text-xs text-gray-500 mt-1">This determines the currency symbol shown on your listings.</p>
             </div>
 
-            {/* Phone Number */}
+            {/* Phone Number - GLOBAL FORMAT */}
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-2">Phone Number (Optional)</label>
               <input
@@ -126,8 +125,9 @@ export default function ProfilePage() {
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-pink-500 transition"
-                placeholder="e.g. +977 98XXXXXXXX"
+                placeholder="e.g. +1 234 567 8900 or +44 20 1234 5678"
               />
+              <p className="text-xs text-gray-500 mt-1">Include your country code (e.g. +1, +44, +91, +977)</p>
             </div>
 
             {/* Bio */}
@@ -151,7 +151,7 @@ export default function ProfilePage() {
               >
                 {saving ? (
                   <>
-                    <span className="animate-spin">⚙️</span> Saving...
+                    <span className="animate-spin">️</span> Saving...
                   </>
                 ) : (
                   "💾 Save Profile"
