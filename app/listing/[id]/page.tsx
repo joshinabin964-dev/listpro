@@ -17,6 +17,10 @@ export default function ListingDetailsPage() {
   const [sellerRating, setSellerRating] = useState({ average: 0, count: 0 });
   const [reviews, setReviews] = useState<any[]>([]);
   
+  // ❤️ NEW: State for the Heart toggle
+  const [isSaved, setIsSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
@@ -56,11 +60,60 @@ export default function ListingDetailsPage() {
             setReviews(reviewsData);
           }
         }
+
+        // ❤️ Check if the current user has already saved this item
+        if (session) {
+          const { data: savedData } = await supabase
+            .from("saved_items")
+            .select("id")
+            .eq("user_id", session.user.id)
+            .eq("listing_id", listingData.id)
+            .single();
+          
+          setIsSaved(!!savedData);
+        }
       }
       setLoading(false);
     };
     fetchData();
   }, [id]);
+
+  // ❤️ NEW: Toggle Save/Unsave Function
+  const handleToggleSave = async () => {
+    if (!currentUser) { 
+      toast.error("Please log in to save items."); 
+      router.push("/login"); 
+      return; 
+    }
+    
+    setSaving(true);
+    if (isSaved) {
+      const { error } = await supabase
+        .from("saved_items")
+        .delete()
+        .eq("user_id", currentUser.id)
+        .eq("listing_id", listing.id);
+      
+      if (!error) {
+        setIsSaved(false);
+        toast.success("Removed from saved items");
+      } else {
+        toast.error("Failed to remove item.");
+      }
+    } else {
+      const { error } = await supabase
+        .from("saved_items")
+        .insert({ user_id: currentUser.id, listing_id: listing.id });
+      
+      if (!error) {
+        setIsSaved(true);
+        toast.success("Saved to wishlist! ❤️");
+      } else {
+        toast.error("Failed to save item.");
+      }
+    }
+    setSaving(false);
+  };
 
   const handleSubmitReview = async () => {
     if (!currentUser) { toast.error("Please log in to leave a review."); return; }
@@ -117,7 +170,7 @@ export default function ListingDetailsPage() {
         blockedList.push(listing.user_id);
         localStorage.setItem('blockedUsers', JSON.stringify(blockedList));
       }
-      toast.success("🚫 User blocked successfully.");
+      toast.success(" User blocked successfully.");
       router.push("/marketplace");
     } catch (error) {
       toast.error("Failed to block user.");
@@ -187,7 +240,6 @@ export default function ListingDetailsPage() {
                     {seller.full_name?.charAt(0) || "U"}
                   </div>
                   <div className="flex-1">
-                    {/* 🔗 UPDATED: Clickable Seller Name */}
                     <Link href={`/profile/${seller.id}`} className="font-bold text-white text-lg hover:text-blue-400 transition-colors inline-flex items-center gap-1 group">
                       {seller.full_name || "Anonymous Seller"}
                       <span className="text-xs text-gray-500 font-normal opacity-0 group-hover:opacity-100 transition-opacity">View Profile →</span>
@@ -225,6 +277,7 @@ export default function ListingDetailsPage() {
               </div>
             )}
 
+            {/* UPDATED Action Buttons with Heart Toggle */}
             <div className="flex flex-wrap gap-4 mt-auto">
               {currentUser && currentUser.id !== listing.user_id ? (
                 <Link href={`/chat/${listing.id}?user=${listing.user_id}`} className="flex-1 min-w-[200px] p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-lg flex items-center justify-center gap-2 text-center">
@@ -236,6 +289,21 @@ export default function ListingDetailsPage() {
                 </div>
               )}
               
+              {/* ❤️ NEW: Heart Toggle Button */}
+              {currentUser && currentUser.id !== listing.user_id && (
+                <button 
+                  onClick={handleToggleSave} 
+                  disabled={saving}
+                  className={`px-6 py-4 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2 ${
+                    isSaved 
+                      ? 'bg-red-900/30 text-red-400 hover:bg-red-900/50 border-red-500/50' 
+                      : 'bg-gray-800 hover:bg-gray-700 text-white'
+                  }`}
+                >
+                  {saving ? "..." : (isSaved ? "❤️ Saved" : "🤍 Save")}
+                </button>
+              )}
+              
               {currentUser && currentUser.id !== listing.user_id && (
                 <button onClick={() => setShowReviewModal(true)} className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-green-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2">
                   ⭐ Leave a Review
@@ -245,7 +313,7 @@ export default function ListingDetailsPage() {
               {currentUser && currentUser.id !== listing.user_id && (
                 <>
                   <button onClick={() => setShowReportModal(true)} className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-yellow-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2">🚩 Report</button>
-                  <button onClick={handleBlockUser} disabled={isBlocking} className="px-6 py-4 bg-gray-800 hover:bg-red-900/50 text-red-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2">{isBlocking ? "..." : "🚫 Block"}</button>
+                  <button onClick={handleBlockUser} disabled={isBlocking} className="px-6 py-4 bg-gray-800 hover:bg-red-900/50 text-red-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2">{isBlocking ? "..." : " Block"}</button>
                 </>
               )}
             </div>
