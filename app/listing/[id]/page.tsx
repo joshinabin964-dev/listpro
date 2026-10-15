@@ -13,20 +13,15 @@ export default function ListingDetailsPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
-  // 📸 State for the image gallery
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  
-  // ⭐ NEW: State for seller ratings and reviews
   const [sellerRating, setSellerRating] = useState({ average: 0, count: 0 });
   const [reviews, setReviews] = useState<any[]>([]);
   
-  // ⭐ NEW: State for Leave a Review modal
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   
-  // Report & Block State
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState("Spam");
   const [isReporting, setIsReporting] = useState(false);
@@ -37,21 +32,17 @@ export default function ListingDetailsPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) setCurrentUser(session.user);
 
-      // Fetch Listing
       const { data: listingData } = await supabase.from("listings").select("*").eq("id", id).single();
       if (listingData) {
         setListing(listingData);
         
-        // 📸 Set the first available image as the default selected image
         const firstImage = listingData.image_url || (listingData.image_urls && listingData.image_urls[0]);
         setSelectedImage(firstImage || null);
         
-        // Fetch Seller Profile
         const { data: sellerData } = await supabase.from("profiles").select("*").eq("id", listingData.user_id).single();
         if (sellerData) {
           setSeller(sellerData);
           
-          // ⭐ Fetch Seller's Reviews and Calculate Average
           const { data: reviewsData } = await supabase
             .from("reviews")
             .select("rating, comment, created_at")
@@ -71,7 +62,6 @@ export default function ListingDetailsPage() {
     fetchData();
   }, [id]);
 
-  // ⭐ NEW: Function to submit a review
   const handleSubmitReview = async () => {
     if (!currentUser) { toast.error("Please log in to leave a review."); return; }
     if (!listing) return;
@@ -85,15 +75,11 @@ export default function ListingDetailsPage() {
         rating: reviewRating,
         comment: reviewComment.trim()
       });
-      
       if (error) throw error;
-      
       toast.success("⭐ Review submitted successfully!");
       setShowReviewModal(false);
       setReviewRating(5);
       setReviewComment("");
-      
-      // Refresh to show the new review instantly
       router.refresh();
     } catch (error) {
       toast.error("Failed to submit review: " + (error as Error).message);
@@ -144,15 +130,10 @@ export default function ListingDetailsPage() {
 
   const currencySymbol = listing.currency_code === 'NPR' ? 'Rs. ' : '$';
   
-  // ⭐ Helper to render stars
   const renderStars = (rating: number) => {
     const stars = [];
     for (let i = 1; i <= 5; i++) {
-      stars.push(
-        <span key={i} className={i <= Math.round(rating) ? "text-yellow-400" : "text-gray-600"}>
-          ★
-        </span>
-      );
+      stars.push(<span key={i} className={i <= Math.round(rating) ? "text-yellow-400" : "text-gray-600"}>★</span>);
     }
     return stars;
   };
@@ -168,8 +149,6 @@ export default function ListingDetailsPage() {
 
       <div className="max-w-6xl mx-auto px-6 py-12">
         <div className="grid md:grid-cols-2 gap-12">
-          
-          {/* 📸 IMAGE GALLERY SECTION */}
           <div className="space-y-4">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden aspect-square flex items-center justify-center">
               {selectedImage ? (
@@ -182,13 +161,7 @@ export default function ListingDetailsPage() {
             {listing.image_urls && listing.image_urls.length > 1 && (
               <div className="grid grid-cols-5 gap-3">
                 {listing.image_urls.map((url: string, index: number) => (
-                  <button
-                    key={index}
-                    onClick={() => setSelectedImage(url)}
-                    className={`aspect-square rounded-xl overflow-hidden border-2 transition ${
-                      selectedImage === url ? 'border-blue-500' : 'border-gray-800 hover:border-gray-600'
-                    }`}
-                  >
+                  <button key={index} onClick={() => setSelectedImage(url)} className={`aspect-square rounded-xl overflow-hidden border-2 transition ${selectedImage === url ? 'border-blue-500' : 'border-gray-800 hover:border-gray-600'}`}>
                     <img src={url} alt={`Thumbnail ${index}`} className="w-full h-full object-cover" />
                   </button>
                 ))}
@@ -196,7 +169,6 @@ export default function ListingDetailsPage() {
             )}
           </div>
 
-          {/* Details Section */}
           <div className="flex flex-col">
             <div className="mb-2 text-sm text-purple-400 font-bold uppercase tracking-wider">{listing.condition || 'Used'} • {listing.status}</div>
             <h1 className="text-4xl font-bold mb-4 text-white">{listing.product_name}</h1>
@@ -207,7 +179,6 @@ export default function ListingDetailsPage() {
               <p className="text-gray-300 whitespace-pre-wrap">{listing.ai_description || listing.description || "No description provided."}</p>
             </div>
 
-            {/* ⭐ UPDATED Seller Info with Ratings */}
             {seller && (
               <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 mb-6">
                 <h3 className="text-sm font-bold text-gray-400 uppercase mb-3">Sold by</h3>
@@ -216,18 +187,17 @@ export default function ListingDetailsPage() {
                     {seller.full_name?.charAt(0) || "U"}
                   </div>
                   <div className="flex-1">
-                    <p className="font-bold text-white text-lg">{seller.full_name || "Anonymous Seller"}</p>
+                    {/* 🔗 UPDATED: Clickable Seller Name */}
+                    <Link href={`/profile/${seller.id}`} className="font-bold text-white text-lg hover:text-blue-400 transition-colors inline-flex items-center gap-1 group">
+                      {seller.full_name || "Anonymous Seller"}
+                      <span className="text-xs text-gray-500 font-normal opacity-0 group-hover:opacity-100 transition-opacity">View Profile →</span>
+                    </Link>
                     <p className="text-sm text-gray-500">Member since {new Date(seller.created_at).getFullYear()}</p>
                     
-                    {/* ⭐ Star Rating Display */}
                     {sellerRating.count > 0 ? (
                       <div className="flex items-center gap-2 mt-1">
-                        <div className="flex text-sm">
-                          {renderStars(sellerRating.average)}
-                        </div>
-                        <span className="text-xs text-gray-400">
-                          {sellerRating.average.toFixed(1)} ({sellerRating.count} {sellerRating.count === 1 ? 'review' : 'reviews'})
-                        </span>
+                        <div className="flex text-sm">{renderStars(sellerRating.average)}</div>
+                        <span className="text-xs text-gray-400">{sellerRating.average.toFixed(1)} ({sellerRating.count} {sellerRating.count === 1 ? 'review' : 'reviews'})</span>
                       </div>
                     ) : (
                       <p className="text-xs text-gray-500 mt-1">No reviews yet</p>
@@ -237,7 +207,6 @@ export default function ListingDetailsPage() {
               </div>
             )}
 
-            {/* ⭐ NEW: Customer Reviews Section */}
             {reviews.length > 0 && (
               <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 mb-6">
                 <h3 className="text-sm font-bold text-gray-400 uppercase mb-4">Customer Reviews</h3>
@@ -245,9 +214,7 @@ export default function ListingDetailsPage() {
                   {reviews.map((review, index) => (
                     <div key={index} className="border-b border-gray-800 pb-4 last:border-0 last:pb-0">
                       <div className="flex items-center justify-between mb-1">
-                        <div className="flex text-sm">
-                          {renderStars(review.rating)}
-                        </div>
+                        <div className="flex text-sm">{renderStars(review.rating)}</div>
                         <span className="text-xs text-gray-500">{new Date(review.created_at).toLocaleDateString()}</span>
                       </div>
                       <p className="text-sm text-gray-300">{review.comment || "No comment provided."}</p>
@@ -258,13 +225,9 @@ export default function ListingDetailsPage() {
               </div>
             )}
 
-            {/* Action Buttons */}
             <div className="flex flex-wrap gap-4 mt-auto">
               {currentUser && currentUser.id !== listing.user_id ? (
-                <Link 
-                  href={`/chat/${listing.id}?user=${listing.user_id}`} 
-                  className="flex-1 min-w-[200px] p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-lg flex items-center justify-center gap-2 text-center"
-                >
+                <Link href={`/chat/${listing.id}?user=${listing.user_id}`} className="flex-1 min-w-[200px] p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-lg flex items-center justify-center gap-2 text-center">
                   💬 Message Seller
                 </Link>
               ) : (
@@ -273,32 +236,16 @@ export default function ListingDetailsPage() {
                 </div>
               )}
               
-              {/* ⭐ Leave a Review Button */}
               {currentUser && currentUser.id !== listing.user_id && (
-                <button 
-                  onClick={() => setShowReviewModal(true)}
-                  className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-green-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2"
-                >
+                <button onClick={() => setShowReviewModal(true)} className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-green-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2">
                   ⭐ Leave a Review
                 </button>
               )}
               
-              {/* Report & Block Buttons */}
               {currentUser && currentUser.id !== listing.user_id && (
                 <>
-                  <button 
-                    onClick={() => setShowReportModal(true)} 
-                    className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-yellow-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2"
-                  >
-                    🚩 Report
-                  </button>
-                  <button 
-                    onClick={handleBlockUser}
-                    disabled={isBlocking}
-                    className="px-6 py-4 bg-gray-800 hover:bg-red-900/50 text-red-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2"
-                  >
-                    {isBlocking ? "..." : "🚫 Block"}
-                  </button>
+                  <button onClick={() => setShowReportModal(true)} className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-yellow-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2">🚩 Report</button>
+                  <button onClick={handleBlockUser} disabled={isBlocking} className="px-6 py-4 bg-gray-800 hover:bg-red-900/50 text-red-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2">{isBlocking ? "..." : "🚫 Block"}</button>
                 </>
               )}
             </div>
@@ -306,73 +253,46 @@ export default function ListingDetailsPage() {
         </div>
       </div>
 
-      {/* ⭐ NEW: Leave a Review Modal */}
       {showReviewModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold mb-4 text-white">Leave a Review</h3>
             <p className="text-gray-400 mb-6 text-sm">How was your experience with this seller?</p>
-            
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-400 mb-2">Rating</label>
               <div className="flex gap-2">
                 {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    onClick={() => setReviewRating(star)}
-                    className={`text-3xl transition ${star <= reviewRating ? 'text-yellow-400' : 'text-gray-600 hover:text-yellow-400'}`}
-                  >
-                    ★
-                  </button>
+                  <button key={star} onClick={() => setReviewRating(star)} className={`text-3xl transition ${star <= reviewRating ? 'text-yellow-400' : 'text-gray-600 hover:text-yellow-400'}`}>★</button>
                 ))}
               </div>
             </div>
-            
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-400 mb-2">Comment (Optional)</label>
-              <textarea
-                value={reviewComment}
-                onChange={(e) => setReviewComment(e.target.value)}
-                rows={3}
-                className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 resize-none"
-                placeholder="Share your experience with other buyers..."
-              />
+              <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} rows={3} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 resize-none" placeholder="Share your experience..." />
             </div>
-
             <div className="flex gap-3">
               <button onClick={() => setShowReviewModal(false)} className="flex-1 p-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition">Cancel</button>
-              <button onClick={handleSubmitReview} disabled={isSubmittingReview} className="flex-1 p-3 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition">
-                {isSubmittingReview ? "Submitting..." : "Submit Review"}
-              </button>
+              <button onClick={handleSubmitReview} disabled={isSubmittingReview} className="flex-1 p-3 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition">{isSubmittingReview ? "Submitting..." : "Submit Review"}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Report Modal */}
       {showReportModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold mb-4 text-white">Report Listing</h3>
-            <p className="text-gray-400 mb-6 text-sm">Why are you reporting this item? Our team will review it shortly.</p>
-            
-            <select 
-              value={reportReason} 
-              onChange={(e) => setReportReason(e.target.value)}
-              className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 mb-6"
-            >
+            <p className="text-gray-400 mb-6 text-sm">Why are you reporting this item?</p>
+            <select value={reportReason} onChange={(e) => setReportReason(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 mb-6">
               <option value="Spam">Spam or Misleading</option>
               <option value="Scam">Suspected Scam</option>
               <option value="Inappropriate">Inappropriate Content</option>
               <option value="Prohibited">Prohibited Item</option>
               <option value="Other">Other</option>
             </select>
-
             <div className="flex gap-3">
               <button onClick={() => setShowReportModal(false)} className="flex-1 p-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition">Cancel</button>
-              <button onClick={handleReport} disabled={isReporting} className="flex-1 p-3 bg-red-600 hover:bg-red-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition">
-                {isReporting ? "Submitting..." : "Submit Report"}
-              </button>
+              <button onClick={handleReport} disabled={isReporting} className="flex-1 p-3 bg-red-600 hover:bg-red-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition">{isReporting ? "Submitting..." : "Submit Report"}</button>
             </div>
           </div>
         </div>
