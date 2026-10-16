@@ -22,8 +22,15 @@ export default function MarketplacePage() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(true);
   
+  // ❤️ Saved items state
   const [savedListingIds, setSavedListingIds] = useState<string[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  
+  // 🔍 NEW: Advanced Filter States
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [conditionFilter, setConditionFilter] = useState("all");
+  
   const router = useRouter();
 
   useEffect(() => {
@@ -63,6 +70,17 @@ export default function MarketplacePage() {
     
     if (term) {
       query = query.or(`product_name.ilike.%${term}%,ai_description.ilike.%${term}%,description.ilike.%${term}%`);
+    }
+
+    // 🔍 Apply advanced filters directly to the database query for maximum efficiency
+    if (minPrice) {
+      query = query.gte("sale_price", Number(minPrice));
+    }
+    if (maxPrice) {
+      query = query.lte("sale_price", Number(maxPrice));
+    }
+    if (conditionFilter !== "all") {
+      query = query.eq("condition", conditionFilter);
     }
 
     const { data, error } = await query.order("created_at", { ascending: false });
@@ -129,9 +147,16 @@ export default function MarketplacePage() {
   };
 
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); fetchListings(searchTerm); };
-  const handleClearSearch = () => { setSearchTerm(""); setDistanceFilter("all"); fetchListings(""); };
+  
+  const handleClearSearch = () => { 
+    setSearchTerm(""); 
+    setDistanceFilter("all"); 
+    setMinPrice("");
+    setMaxPrice("");
+    setConditionFilter("all");
+    fetchListings(""); 
+  };
 
-  // ✨ NEW: Premium Loading State
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white">
@@ -149,37 +174,94 @@ export default function MarketplacePage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link href="/"><h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">ListPro</h1></Link>
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard"><button className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition">My Dashboard</button></Link>
-            <Link href="/generate"><button className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-bold transition">+ Sell an Item</button></Link>
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
+          <Link href="/"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">ListPro</h1></Link>
+          <div className="flex items-center gap-2 md:gap-4">
+            <Link href="/dashboard"><button className="px-3 py-2 md:px-4 md:py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition">My Dashboard</button></Link>
+            <Link href="/generate"><button className="px-3 py-2 md:px-4 md:py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs md:text-sm font-bold transition">+ Sell</button></Link>
           </div>
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Public Marketplace</h1>
-          <p className="text-gray-400 text-lg">Discover unique items listed by the ListPro community.</p>
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-8 md:py-12">
+        <div className="text-center mb-8 md:mb-12">
+          <h1 className="text-3xl md:text-4xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Public Marketplace</h1>
+          <p className="text-gray-400 text-base md:text-lg">Discover unique items listed by the ListPro community.</p>
         </div>
 
-        <form onSubmit={handleSearch} className="max-w-4xl mx-auto mb-12 flex flex-col md:flex-row gap-4">
-          <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search for anything (e.g. iPhone, Sofa, Car, Nike)..." className="flex-1 p-4 bg-gray-900 border border-gray-800 rounded-xl text-white focus:outline-none focus:border-blue-500" />
-          <select value={distanceFilter} onChange={(e) => { setDistanceFilter(e.target.value); fetchListings(searchTerm); }} className="w-full md:w-48 p-4 bg-gray-900 border border-gray-800 rounded-xl text-white focus:outline-none focus:border-blue-500 cursor-pointer">
-            <option value="all">🌍 Anywhere</option><option value="5"> Within 5 km</option><option value="10">📍 Within 10 km</option><option value="25">📍 Within 25 km</option>
-          </select>
-          <button type="submit" className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition">Search</button>
-          {searchTerm && (<button type="button" onClick={handleClearSearch} className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition">Clear</button>)}
+        {/* 🔍 UPDATED: Advanced Search & Filter Form */}
+        <form onSubmit={handleSearch} className="max-w-5xl mx-auto mb-12 space-y-4">
+          {/* Main Search Row */}
+          <div className="flex flex-col md:flex-row gap-4">
+            <input 
+              type="text" 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
+              placeholder="Search for anything (e.g. iPhone, Sofa, Car, Nike)..." 
+              className="flex-1 p-4 bg-gray-900 border border-gray-800 rounded-xl text-white focus:outline-none focus:border-blue-500" 
+            />
+            <button type="submit" className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition">
+              Search
+            </button>
+            {(searchTerm || distanceFilter !== 'all' || minPrice || maxPrice || conditionFilter !== 'all') && (
+              <button 
+                type="button" 
+                onClick={handleClearSearch} 
+                className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
+          
+          {/* Advanced Filters Row */}
+          <div className="flex flex-wrap gap-4 p-4 bg-gray-900/50 border border-gray-800 rounded-xl">
+            <select 
+              value={distanceFilter} 
+              onChange={(e) => { setDistanceFilter(e.target.value); fetchListings(searchTerm); }} 
+              className="flex-1 min-w-[140px] p-3 bg-gray-900 border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 cursor-pointer text-sm"
+            >
+              <option value="all">🌍 Anywhere</option>
+              <option value="5">📍 Within 5 km</option>
+              <option value="10">📍 Within 10 km</option>
+              <option value="25">📍 Within 25 km</option>
+            </select>
+            
+            <input 
+              type="number" 
+              value={minPrice} 
+              onChange={(e) => setMinPrice(e.target.value)} 
+              placeholder="Min Price" 
+              className="flex-1 min-w-[120px] p-3 bg-gray-900 border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 text-sm" 
+            />
+            <input 
+              type="number" 
+              value={maxPrice} 
+              onChange={(e) => setMaxPrice(e.target.value)} 
+              placeholder="Max Price" 
+              className="flex-1 min-w-[120px] p-3 bg-gray-900 border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 text-sm" 
+            />
+            
+            <select 
+              value={conditionFilter} 
+              onChange={(e) => { setConditionFilter(e.target.value); fetchListings(searchTerm); }} 
+              className="flex-1 min-w-[140px] p-3 bg-gray-900 border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 cursor-pointer text-sm"
+            >
+              <option value="all">✨ Any Condition</option>
+              <option value="New">New</option>
+              <option value="Like New">Like New</option>
+              <option value="Used">Used</option>
+            </select>
+          </div>
         </form>
 
         {listings.length === 0 ? (
           <div className="text-center py-20 bg-gray-900 rounded-2xl border border-gray-800">
-            <p className="text-2xl text-gray-400 mb-6">No items found matching your search and distance.</p>
+            <p className="text-2xl text-gray-400 mb-6">No items found matching your filters.</p>
             <Link href="/generate"><button className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition">Be the first to list an item!</button></Link>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
             {listings.map((listing) => {
               const isSaved = savedListingIds.includes(listing.id);
               
@@ -214,8 +296,8 @@ export default function MarketplacePage() {
                       </div>
                       <p className="text-gray-500 text-sm mb-4 line-clamp-2">{listing.ai_description || listing.description || "No description provided."}</p>
                       <div className="mt-auto flex justify-between items-center text-xs text-gray-600 pt-4 border-t border-gray-800">
-                        <span>by Seller</span>
                         <span>{listing.condition || "Used"}</span>
+                        <span>{listing.status}</span>
                       </div>
                     </div>
                   </div>
