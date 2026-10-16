@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Image from "next/image"; // ✨ NEW: Next.js Optimized Image
 import toast from "react-hot-toast";
 
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -23,11 +22,9 @@ export default function MarketplacePage() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // ❤️ Saved items state
   const [savedListingIds, setSavedListingIds] = useState<string[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   
-  // 🔍 Advanced Filter States
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [conditionFilter, setConditionFilter] = useState("all");
@@ -73,7 +70,6 @@ export default function MarketplacePage() {
       query = query.or(`product_name.ilike.%${term}%,ai_description.ilike.%${term}%,description.ilike.%${term}%`);
     }
 
-    // 🔍 Apply advanced filters directly to the database query for maximum efficiency
     if (minPrice) {
       query = query.gte("sale_price", Number(minPrice));
     }
@@ -190,9 +186,7 @@ export default function MarketplacePage() {
           <p className="text-gray-400 text-base md:text-lg">Discover unique items listed by the ListPro community.</p>
         </div>
 
-        {/* 🔍 Advanced Search & Filter Form */}
         <form onSubmit={handleSearch} className="max-w-5xl mx-auto mb-12 space-y-4">
-          {/* Main Search Row */}
           <div className="flex flex-col md:flex-row gap-4">
             <input 
               type="text" 
@@ -215,7 +209,6 @@ export default function MarketplacePage() {
             )}
           </div>
           
-          {/* Advanced Filters Row */}
           <div className="flex flex-wrap gap-4 p-4 bg-gray-900/50 border border-gray-800 rounded-xl">
             <select 
               value={distanceFilter} 
@@ -289,16 +282,10 @@ export default function MarketplacePage() {
 
                     {listing.distance < 9999 && (<div className="absolute top-4 right-4 bg-black/70 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-green-400 border border-green-500/30 z-10">📍 {listing.distance.toFixed(1)} km</div>)}
                     
-                    {/* ✨ NEW: Optimized Next.js Image */}
-                    <div className="aspect-square bg-gray-800 overflow-hidden relative">
+                    {/* Standard img tag - works without config */}
+                    <div className="aspect-square bg-gray-800 overflow-hidden">
                       {firstImage ? (
-                        <Image 
-                          src={firstImage} 
-                          alt={listing.product_name || "Listing"} 
-                          fill
-                          className="object-cover group-hover:scale-105 transition duration-300"
-                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                        />
+                        <img src={firstImage} alt={listing.product_name || "Listing"} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-gray-600">No Image</div>
                       )}
