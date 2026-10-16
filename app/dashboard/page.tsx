@@ -60,22 +60,33 @@ export default function DashboardPage() {
     setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
-  if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><p>Loading...</p></main>;
+  if (loading) return (
+    <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white">
+      <div className="flex flex-col items-center gap-4">
+        <div className="relative w-16 h-16">
+          <div className="absolute top-0 left-0 w-full h-full border-4 border-gray-800 rounded-full"></div>
+          <div className="absolute top-0 left-0 w-full h-full border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
+        </div>
+        <p className="text-gray-400 font-medium animate-pulse">Loading Dashboard...</p>
+      </div>
+    </main>
+  );
 
   return (
     <main className="min-h-screen bg-gray-950 text-white relative">
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">ListPro</h1>
-          <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
+          <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">ListPro</h1>
+          <div className="flex items-center gap-2 md:gap-4">
             
             {/* NOTIFICATIONS DROPDOWN */}
             <div className="relative">
               <button 
                 onClick={() => setShowNotifications(!showNotifications)}
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition flex items-center gap-2 relative"
+                className="px-3 py-2 md:px-4 md:py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition flex items-center gap-1 md:gap-2 relative"
               >
-                🔔 Notifications
+                <span>🔔</span>
+                <span className="hidden sm:inline">Notifications</span>
                 {notifications.length > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full animate-pulse">
                     {notifications.length}
@@ -84,7 +95,7 @@ export default function DashboardPage() {
               </button>
 
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-80 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+                <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
                   <div className="p-3 border-b border-gray-800 bg-gray-800/50">
                     <h3 className="font-bold text-sm text-white">Recent Activity</h3>
                   </div>
@@ -117,101 +128,106 @@ export default function DashboardPage() {
             </div>
             
             <Link href="/pricing">
-              <button className={`px-4 py-2 rounded-lg text-sm font-bold transition ${plan === 'pro' ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-white'}`}>
-                {plan === 'pro' ? '⭐ Pro Member' : 'Upgrade Plan'}
+              <button className={`px-3 py-2 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-bold transition ${plan === 'pro' ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-white'}`}>
+                {plan === 'pro' ? '⭐ Pro' : 'Upgrade'}
               </button>
             </Link>
             
-            <button onClick={handleLogout} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition">
+            <button onClick={handleLogout} className="px-3 py-2 md:px-4 md:py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition">
               Sign Out
             </button>
           </div>
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto px-6 py-12">
-        <h1 className="text-4xl font-bold mb-2">Welcome back{userName ? `, ${userName}` : ''}!</h1>
-        <p className="text-gray-400 text-lg mb-8">Here is your business overview.</p>
+      <div className="max-w-6xl mx-auto px-4 md:px-6 py-8 md:py-12">
+        <h1 className="text-3xl md:text-4xl font-bold mb-2">Welcome back{userName ? `, ${userName}` : ''}!</h1>
+        <p className="text-gray-400 text-base md:text-lg mb-6 md:mb-8">Here is your business overview.</p>
 
         <LocationSetup />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6 shadow-xl">
-            <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Total Revenue (Sold Items)</h2>
-            <div className="text-4xl font-bold text-blue-400">${stats.revenue.toFixed(2)}</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8">
+          <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-6 shadow-xl">
+            <h2 className="text-xs md:text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Total Revenue (Sold Items)</h2>
+            <div className="text-3xl md:text-4xl font-bold text-blue-400">${stats.revenue.toFixed(2)}</div>
           </div>
-          <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6 shadow-xl">
-            <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Net Profit</h2>
-            <div className={`text-4xl font-bold ${stats.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>${stats.profit.toFixed(2)}</div>
+          <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-6 shadow-xl">
+            <h2 className="text-xs md:text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Net Profit</h2>
+            <div className={`text-3xl md:text-4xl font-bold ${stats.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>${stats.profit.toFixed(2)}</div>
           </div>
         </div>
 
-        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 shadow-xl mb-8">
-          <div className="flex justify-between items-center">
+        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 shadow-xl mb-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4 md:gap-0 text-center md:text-left">
             <div>
-              <h2 className="text-xl text-gray-400 mb-2">Current Subscription</h2>
-              <div className="flex items-baseline gap-3">
-                <span className={`text-4xl font-bold ${plan === 'pro' ? 'text-blue-400' : 'text-gray-300'}`}>{plan === 'pro' ? 'Pro Seller' : 'Starter'}</span>
+              <h2 className="text-lg md:text-xl text-gray-400 mb-2">Current Subscription</h2>
+              <div className="flex flex-col md:flex-row items-center md:items-baseline gap-2 md:gap-3">
+                <span className={`text-3xl md:text-4xl font-bold ${plan === 'pro' ? 'text-blue-400' : 'text-gray-300'}`}>{plan === 'pro' ? 'Pro Seller' : 'Starter'}</span>
                 {plan === 'pro' && <span className="px-3 py-1 bg-blue-500/20 text-blue-400 text-sm font-bold rounded-full">ACTIVE</span>}
               </div>
             </div>
-            {plan === 'free' && <Link href="/pricing"><button className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition shadow-lg shadow-blue-900/50">Upgrade to Pro</button></Link>}
+            {plan === 'free' && (
+              <Link href="/pricing" className="w-full md:w-auto">
+                <button className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition shadow-lg shadow-blue-900/50">
+                  Upgrade to Pro
+                </button>
+              </Link>
+            )}
           </div>
         </div>
 
-        {/* UPDATED GRID: Now 7 cards, beautifully flowing in the grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* UPDATED GRID: Mobile-optimized padding and gaps */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
           <Link href="/generate" className="block">
-            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-blue-500 transition cursor-pointer group">
-              <span className="text-4xl mb-4 block">🚀</span>
-              <h3 className="text-2xl font-bold mb-2 group-hover:text-blue-400 transition">Create Listing</h3>
-              <p className="text-gray-400">Upload a photo and publish a new product.</p>
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-blue-500 transition cursor-pointer group">
+              <span className="text-3xl md:text-4xl mb-3 md:mb-4 block">🚀</span>
+              <h3 className="text-xl md:text-2xl font-bold mb-2 group-hover:text-blue-400 transition">Create Listing</h3>
+              <p className="text-sm md:text-base text-gray-400">Upload a photo and publish a new product.</p>
             </div>
           </Link>
           <Link href="/my-listings" className="block">
-            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-purple-500 transition cursor-pointer group">
-              <span className="text-4xl mb-4 block">📦</span>
-              <h3 className="text-2xl font-bold mb-2 group-hover:text-purple-400 transition">Manage Inventory</h3>
-              <p className="text-gray-400">View, edit, and copy your active listings.</p>
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-purple-500 transition cursor-pointer group">
+              <span className="text-3xl md:text-4xl mb-3 md:mb-4 block">📦</span>
+              <h3 className="text-xl md:text-2xl font-bold mb-2 group-hover:text-purple-400 transition">Manage Inventory</h3>
+              <p className="text-sm md:text-base text-gray-400">View, edit, and copy your active listings.</p>
             </div>
           </Link>
           <Link href="/marketplace" className="block">
-            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-green-500 transition cursor-pointer group">
-              <span className="text-4xl mb-4 block">🌍</span>
-              <h3 className="text-2xl font-bold mb-2 group-hover:text-green-400 transition">Public Marketplace</h3>
-              <p className="text-gray-400">Browse items listed by the community.</p>
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-green-500 transition cursor-pointer group">
+              <span className="text-3xl md:text-4xl mb-3 md:mb-4 block">🌍</span>
+              <h3 className="text-xl md:text-2xl font-bold mb-2 group-hover:text-green-400 transition">Public Marketplace</h3>
+              <p className="text-sm md:text-base text-gray-400">Browse items listed by the community.</p>
             </div>
           </Link>
           <Link href="/inbox" className="block">
-            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-yellow-500 transition cursor-pointer group">
-              <span className="text-4xl mb-4 block">💬</span>
-              <h3 className="text-2xl font-bold mb-2 group-hover:text-yellow-400 transition">My Inbox</h3>
-              <p className="text-gray-400">Read messages from interested buyers.</p>
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-yellow-500 transition cursor-pointer group">
+              <span className="text-3xl md:text-4xl mb-3 md:mb-4 block">💬</span>
+              <h3 className="text-xl md:text-2xl font-bold mb-2 group-hover:text-yellow-400 transition">My Inbox</h3>
+              <p className="text-sm md:text-base text-gray-400">Read messages from interested buyers.</p>
             </div>
           </Link>
           
-          {/* NEW: SAVED ITEMS CARD */}
           <Link href="/saved" className="block">
-            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-red-500 transition cursor-pointer group">
-              <span className="text-4xl mb-4 block">❤️</span>
-              <h3 className="text-2xl font-bold mb-2 group-hover:text-red-400 transition">Saved Items</h3>
-              <p className="text-gray-400">View your wishlisted products.</p>
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-red-500 transition cursor-pointer group">
+              <span className="text-3xl md:text-4xl mb-3 md:mb-4 block">❤️</span>
+              <h3 className="text-xl md:text-2xl font-bold mb-2 group-hover:text-red-400 transition">Saved Items</h3>
+              <p className="text-sm md:text-base text-gray-400">View your wishlisted products.</p>
             </div>
           </Link>
 
           <Link href="/profile" className="block">
-            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-pink-500 transition cursor-pointer group">
-              <span className="text-4xl mb-4 block">👤</span>
-              <h3 className="text-2xl font-bold mb-2 group-hover:text-pink-400 transition">My Profile</h3>
-              <p className="text-gray-400">Update your name and seller details.</p>
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-pink-500 transition cursor-pointer group">
+              <span className="text-3xl md:text-4xl mb-3 md:mb-4 block">👤</span>
+              <h3 className="text-xl md:text-2xl font-bold mb-2 group-hover:text-pink-400 transition">My Profile</h3>
+              <p className="text-sm md:text-base text-gray-400">Update your name and seller details.</p>
             </div>
           </Link>
 
           <Link href="/optimizer" className="block">
-            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 hover:border-cyan-500 transition cursor-pointer group">
-              <span className="text-4xl mb-4 block">⚡</span>
-              <h3 className="text-2xl font-bold mb-2 group-hover:text-cyan-400 transition">Bulk Optimizer</h3>
-              <p className="text-gray-400">Format CSVs for Daraz, Shopify, Amazon & Etsy.</p>
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-cyan-500 transition cursor-pointer group">
+              <span className="text-3xl md:text-4xl mb-3 md:mb-4 block">⚡</span>
+              <h3 className="text-xl md:text-2xl font-bold mb-2 group-hover:text-cyan-400 transition">Bulk Optimizer</h3>
+              <p className="text-sm md:text-base text-gray-400">Format CSVs for Daraz, Shopify, Amazon & Etsy.</p>
             </div>
           </Link>
         </div>
