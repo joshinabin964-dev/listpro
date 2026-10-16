@@ -58,7 +58,17 @@ export default function InboxPage() {
     }
   };
 
-  if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><p>Loading inbox...</p></main>;
+  if (loading) return (
+    <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white">
+      <div className="flex flex-col items-center gap-4">
+        <div className="relative w-16 h-16">
+          <div className="absolute top-0 left-0 w-full h-full border-4 border-gray-800 rounded-full"></div>
+          <div className="absolute top-0 left-0 w-full h-full border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
+        </div>
+        <p className="text-gray-400 font-medium animate-pulse">Loading inbox...</p>
+      </div>
+    </main>
+  );
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
@@ -74,9 +84,22 @@ export default function InboxPage() {
         <p className="text-gray-400 text-lg mb-8">Messages from buyers and sellers.</p>
 
         {conversations.length === 0 ? (
-          <div className="text-center py-20 bg-gray-900 rounded-2xl border border-gray-800 border-dashed">
-            <p className="text-2xl text-gray-400 mb-2">No messages yet</p>
-            <p className="text-gray-500">When someone messages you about a listing, it will appear here.</p>
+          /* ✨ NEW: Premium Empty State */
+          <div className="text-center py-20 bg-gray-900 rounded-2xl border border-gray-800">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gray-800 mb-6">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              </svg>
+            </div>
+            <h3 className="text-2xl font-bold text-white mb-2">Your inbox is empty</h3>
+            <p className="text-gray-400 mb-8 max-w-md mx-auto">
+              You haven't received any messages yet. Start a conversation by browsing items in the marketplace!
+            </p>
+            <Link href="/marketplace">
+              <button className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition flex items-center gap-2 mx-auto">
+                <span>🌍</span> Browse the Marketplace
+              </button>
+            </Link>
           </div>
         ) : (
           <div className="space-y-4">
@@ -91,7 +114,7 @@ export default function InboxPage() {
                     {conv.listing_image ? (
                       <img src={conv.listing_image} alt={conv.listing_name} className="w-16 h-16 rounded-xl object-cover bg-gray-800" />
                     ) : (
-                      <div className="w-16 h-16 rounded-xl bg-gray-800 flex items-center justify-center text-2xl"></div>
+                      <div className="w-16 h-16 rounded-xl bg-gray-800 flex items-center justify-center text-2xl">📦</div>
                     )}
                     <div className="flex-1">
                       <h3 className="font-bold text-white text-lg group-hover:text-blue-400 transition">{conv.listing_name}</h3>
