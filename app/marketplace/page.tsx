@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Image from "next/image"; // ✨ NEW: Next.js Optimized Image
 import toast from "react-hot-toast";
 
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -26,7 +27,7 @@ export default function MarketplacePage() {
   const [savedListingIds, setSavedListingIds] = useState<string[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   
-  // 🔍 NEW: Advanced Filter States
+  // 🔍 Advanced Filter States
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [conditionFilter, setConditionFilter] = useState("all");
@@ -189,7 +190,7 @@ export default function MarketplacePage() {
           <p className="text-gray-400 text-base md:text-lg">Discover unique items listed by the ListPro community.</p>
         </div>
 
-        {/* 🔍 UPDATED: Advanced Search & Filter Form */}
+        {/* 🔍 Advanced Search & Filter Form */}
         <form onSubmit={handleSearch} className="max-w-5xl mx-auto mb-12 space-y-4">
           {/* Main Search Row */}
           <div className="flex flex-col md:flex-row gap-4">
@@ -264,6 +265,7 @@ export default function MarketplacePage() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
             {listings.map((listing) => {
               const isSaved = savedListingIds.includes(listing.id);
+              const firstImage = listing.image_url || (listing.image_urls && listing.image_urls[0]);
               
               return (
                 <Link key={listing.id} href={`/listing/${listing.id}`} className="block group">
@@ -286,9 +288,22 @@ export default function MarketplacePage() {
                     </button>
 
                     {listing.distance < 9999 && (<div className="absolute top-4 right-4 bg-black/70 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-green-400 border border-green-500/30 z-10">📍 {listing.distance.toFixed(1)} km</div>)}
-                    <div className="aspect-square bg-gray-800 overflow-hidden">
-                      {listing.image_url ? (<img src={listing.image_url} alt={listing.product_name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />) : (<div className="w-full h-full flex items-center justify-center text-gray-600">No Image</div>)}
+                    
+                    {/* ✨ NEW: Optimized Next.js Image */}
+                    <div className="aspect-square bg-gray-800 overflow-hidden relative">
+                      {firstImage ? (
+                        <Image 
+                          src={firstImage} 
+                          alt={listing.product_name || "Listing"} 
+                          fill
+                          className="object-cover group-hover:scale-105 transition duration-300"
+                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-600">No Image</div>
+                      )}
                     </div>
+                    
                     <div className="p-5 flex-1 flex flex-col">
                       <div className="flex justify-between items-start mb-2">
                         <h3 className="font-bold text-white text-lg truncate pr-2">{listing.product_name || listing.title}</h3>
