@@ -35,6 +35,12 @@ export default function LocationSetup() {
           setStatus('Error saving data: ' + error.message);
         } else {
           setStatus('Success! Your location is saved.');
+          
+          // 🚀 MAGIC SIGNAL: Instantly tells the Dashboard to refresh without a page reload!
+          window.dispatchEvent(new Event('profileUpdated'));
+          
+          // Optional: Clear the input field after success
+          setCountry(''); 
         }
       }
     }, (error) => {

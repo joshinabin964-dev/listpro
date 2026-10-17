@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -51,43 +51,54 @@ export default function DashboardPage() {
   const [userName, setUserName] = useState<string | null>(null);
   const router = useRouter();
 
-  useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { router.push("/login"); return; }
+  // 🔄 Extracted fetch logic so it can be called on mount AND on update
+  const fetchData = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { router.push("/login"); return; }
 
-      // 1. Get Profile & Stats
-      const { data: profile } = await supabase.from("profiles").select("plan, country, latitude, longitude, full_name").eq("id", session.user.id).single();
-      if (profile) {
-        setPlan(profile.plan || "free");
-        setUserName(profile.full_name);
-        // 🌍 Set the correct currency symbol based on country
-        setCurrencySymbol(getSymbol(profile.country));
-      }
+    const { data: profile } = await supabase.from("profiles").select("plan, country, latitude, longitude, full_name").eq("id", session.user.id).single();
+    if (profile) {
+      setPlan(profile.plan || "free");
+      setUserName(profile.full_name);
+      setCurrencySymbol(getSymbol(profile.country));
+    }
 
-      const { data: listings } = await supabase.from("listings").select("sale_price, cost_price, status").eq("user_id", session.user.id);
-      if (listings) {
-        const soldItems = listings.filter(l => l.status === "Sold");
-        const revenue = soldItems.reduce((sum, item) => sum + (item.sale_price || 0), 0);
-        const profit = soldItems.reduce((sum, item) => sum + ((item.sale_price || 0) - (item.cost_price || 0)), 0);
-        setStats({ revenue, profit });
-      }
+    const { data: listings } = await supabase.from("listings").select("sale_price, cost_price, status").eq("user_id", session.user.id);
+    if (listings) {
+      const soldItems = listings.filter(l => l.status === "Sold");
+      const revenue = soldItems.reduce((sum, item) => sum + (item.sale_price || 0), 0);
+      const profit = soldItems.reduce((sum, item) => sum + ((item.sale_price || 0) - (item.cost_price || 0)), 0);
+      setStats({ revenue, profit });
+    }
 
-      // 2. Fetch Unread Notifications
-      const { data: notifs } = await supabase
-        .from("notifications")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .eq("is_read", false)
-        .order("created_at", { ascending: false })
-        .limit(10);
-      
-      if (notifs) setNotifications(notifs);
-
-      setLoading(false);
-    };
-    checkUser();
+    const { data: notifs } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .eq("is_read", false)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    
+    if (notifs) setNotifications(notifs);
+    setLoading(false);
   }, [router]);
+
+  useEffect(() => {
+    // 1. Fetch on initial load
+    fetchData();
+
+    // 2. Listen for the "profileUpdated" event from LocationSetup or Profile pages
+    const handleProfileUpdate = () => {
+      setLoading(true); // Briefly show loading state for smooth transition
+      fetchData();
+    };
+
+    window.addEventListener('profileUpdated', handleProfileUpdate);
+
+    return () => {
+      window.removeEventListener('profileUpdated', handleProfileUpdate);
+    };
+  }, [fetchData]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -117,13 +128,8 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
           <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Margin</h1>
           <div className="flex items-center gap-2 md:gap-4">
-            
-            {/* NOTIFICATIONS DROPDOWN */}
             <div className="relative">
-              <button 
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="px-3 py-2 md:px-4 md:py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition flex items-center gap-1 md:gap-2 relative"
-              >
+              <button onClick={() => setShowNotifications(!showNotifications)} className="px-3 py-2 md:px-4 md:py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition flex items-center gap-1 md:gap-2 relative">
                 <span>🔔</span>
                 <span className="hidden sm:inline">Notifications</span>
                 {notifications.length > 0 && (
@@ -132,7 +138,6 @@ export default function DashboardPage() {
                   </span>
                 )}
               </button>
-
               {showNotifications && (
                 <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
                   <div className="p-3 border-b border-gray-800 bg-gray-800/50">
@@ -148,33 +153,23 @@ export default function DashboardPage() {
                             <p className="text-sm text-gray-200">{notif.content}</p>
                             <p className="text-xs text-gray-500 mt-1">{new Date(notif.created_at).toLocaleDateString()}</p>
                           </div>
-                          <button 
-                            onClick={() => markAsRead(notif.id)}
-                            className="text-xs text-blue-400 hover:text-blue-300 font-bold whitespace-nowrap"
-                          >
-                            Mark read
-                          </button>
+                          <button onClick={() => markAsRead(notif.id)} className="text-xs text-blue-400 hover:text-blue-300 font-bold whitespace-nowrap">Mark read</button>
                         </div>
                       ))
                     )}
                   </div>
-                  
                   <Link href="/notifications" className="block p-3 text-center text-sm text-blue-400 hover:text-blue-300 font-bold border-t border-gray-800 hover:bg-gray-800 transition bg-gray-900/50">
                     View All Notifications →
                   </Link>
                 </div>
               )}
             </div>
-            
             <Link href="/pricing">
               <button className={`px-3 py-2 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-bold transition ${plan === 'pro' ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-white'}`}>
                 {plan === 'pro' ? '⭐ Pro' : 'Upgrade'}
               </button>
             </Link>
-            
-            <button onClick={handleLogout} className="px-3 py-2 md:px-4 md:py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition">
-              Sign Out
-            </button>
+            <button onClick={handleLogout} className="px-3 py-2 md:px-4 md:py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition">Sign Out</button>
           </div>
         </div>
       </nav>
@@ -188,12 +183,10 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8">
           <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-6 shadow-xl">
             <h2 className="text-xs md:text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Total Revenue (Sold Items)</h2>
-            {/* 🌍 DYNAMIC CURRENCY SYMBOL */}
             <div className="text-3xl md:text-4xl font-bold text-blue-400">{currencySymbol}{stats.revenue.toFixed(2)}</div>
           </div>
           <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-6 shadow-xl">
             <h2 className="text-xs md:text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Net Profit</h2>
-            {/* 🌍 DYNAMIC CURRENCY SYMBOL */}
             <div className={`text-3xl md:text-4xl font-bold ${stats.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
               {currencySymbol}{stats.profit.toFixed(2)}
             </div>
@@ -248,7 +241,6 @@ export default function DashboardPage() {
               <p className="text-sm md:text-base text-gray-400">Read messages from interested buyers.</p>
             </div>
           </Link>
-          
           <Link href="/saved" className="block">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-red-500 transition cursor-pointer group">
               <span className="text-3xl md:text-4xl mb-3 md:mb-4 block">❤️</span>
@@ -256,7 +248,6 @@ export default function DashboardPage() {
               <p className="text-sm md:text-base text-gray-400">View your wishlisted products.</p>
             </div>
           </Link>
-
           <Link href="/profile" className="block">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-pink-500 transition cursor-pointer group">
               <span className="text-3xl md:text-4xl mb-3 md:mb-4 block">👤</span>
@@ -264,7 +255,6 @@ export default function DashboardPage() {
               <p className="text-sm md:text-base text-gray-400">Update your name and seller details.</p>
             </div>
           </Link>
-
           <Link href="/optimizer" className="block">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-cyan-500 transition cursor-pointer group">
               <span className="text-3xl md:text-4xl mb-3 md:mb-4 block">⚡</span>
