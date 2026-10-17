@@ -6,7 +6,7 @@ export default function OptimizerPromoPage() {
       {/* NAVBAR */}
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link href="/"><h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">ListPro</h1></Link>
+          <Link href="/"><h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Margin</h1></Link>
           <div className="flex items-center gap-4">
             <Link href="/optimizer" className="text-sm font-bold text-gray-300 hover:text-white transition">App Login</Link>
             <Link href="/login">
@@ -67,7 +67,7 @@ export default function OptimizerPromoPage() {
       <section className="py-24 px-6 bg-gray-900/30">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">Why Serious Sellers Choose ListPro</h2>
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">Why Serious Sellers Choose Margin</h2>
             <p className="text-gray-400 text-lg">We don't use AI to guess. We use deterministic rules to guarantee perfection.</p>
           </div>
           
@@ -149,8 +149,8 @@ export default function OptimizerPromoPage() {
       {/* FOOTER */}
       <footer className="border-t border-gray-800 py-12 px-6 bg-gray-950">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">ListPro</div>
-          <p className="text-gray-500 text-sm">© 2026 ListPro. Built for serious e-commerce sellers.</p>
+          <div className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Margin</div>
+          <p className="text-gray-500 text-sm">© 2026 Margin. Built for serious e-commerce sellers.</p>
           <div className="flex gap-6">
             <Link href="/optimizer" className="text-sm text-gray-400 hover:text-white transition">App Login</Link>
             <Link href="/" className="text-sm text-gray-400 hover:text-white transition">Consumer Marketplace</Link>

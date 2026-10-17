@@ -45,7 +45,7 @@ export default function SellerProfilePage() {
           <h1 className="text-3xl font-bold mb-2">Verified Seller</h1>
           <p className="text-gray-400 text-sm mb-4">Member ID: {sellerId}</p>
           <div className="inline-flex items-center gap-2 bg-green-900/20 text-green-400 px-4 py-2 rounded-full border border-green-800 text-sm font-bold">
-            <span>✅</span> Trusted ListPro Member
+            <span>✅</span> Trusted Margin Member
           </div>
         </div>
 

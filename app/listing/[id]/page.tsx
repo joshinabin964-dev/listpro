@@ -18,8 +18,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .eq("id", id)
     .single();
 
-  const title = listing?.product_name || listing?.title || "Item for sale on ListPro";
-  const description = listing?.ai_description || listing?.description || "Check out this amazing item on ListPro!";
+  const title = listing?.product_name || listing?.title || "Item for sale on Margin";
+  const description = listing?.ai_description || listing?.description || "Check out this amazing item on Margin!";
   const price = listing?.sale_price ? `${listing.currency_code === 'NPR' ? 'Rs. ' : '$'}${listing.sale_price}` : "";
   
   const firstImage = listing?.image_url || (listing?.image_urls && listing.image_urls[0]);
@@ -27,7 +27,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const imageUrl = firstImage || "https://images.unsplash.com/photo-1556742049-0cfed4f7a07d?auto=format&fit=crop&w=1200&q=80";
 
   return {
-    title: `${title} - ${price} | ListPro`,
+    title: `${title} - ${price} | Margin`,
     description: description.substring(0, 150) + "...",
     openGraph: {
       title: `${title} - ${price}`,

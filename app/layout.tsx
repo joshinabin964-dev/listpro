@@ -6,8 +6,8 @@ import { Toaster } from 'react-hot-toast'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'ListPro',
-  description: 'The Ultimate Seller Platform',
+  title: 'Margin - The Global Marketplace for Everything',
+  description: 'Buy, sell, and trade anything, anywhere. Margin is the global marketplace connecting people worldwide.',
 }
 
 export default function RootLayout({

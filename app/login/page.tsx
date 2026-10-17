@@ -34,7 +34,7 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-8 bg-gray-950 text-white">
       <div className="w-full max-w-md p-8 bg-gray-900 rounded-2xl border border-gray-800 shadow-2xl">
-        <h1 className="text-3xl font-bold mb-2 text-center text-blue-500">ListPro</h1>
+        <h1 className="text-3xl font-bold mb-2 text-center text-blue-500">Margin</h1>
         <p className="text-gray-400 text-center mb-8">
           {isSignUp ? "Create an account to get started" : "Sign in to start generating listings"}
         </p>

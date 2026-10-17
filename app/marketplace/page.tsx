@@ -172,7 +172,7 @@ export default function MarketplacePage() {
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
-          <Link href="/"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">ListPro</h1></Link>
+          <Link href="/"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Margin</h1></Link>
           <div className="flex items-center gap-2 md:gap-4">
             <Link href="/dashboard"><button className="px-3 py-2 md:px-4 md:py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition">My Dashboard</button></Link>
             <Link href="/generate"><button className="px-3 py-2 md:px-4 md:py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs md:text-sm font-bold transition">+ Sell</button></Link>
@@ -183,7 +183,7 @@ export default function MarketplacePage() {
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-8 md:py-12">
         <div className="text-center mb-8 md:mb-12">
           <h1 className="text-3xl md:text-4xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Public Marketplace</h1>
-          <p className="text-gray-400 text-base md:text-lg">Discover unique items listed by the ListPro community.</p>
+          <p className="text-gray-400 text-base md:text-lg">Discover unique items listed by the Margin community.</p>
         </div>
 
         <form onSubmit={handleSearch} className="max-w-5xl mx-auto mb-12 space-y-4">
