@@ -77,7 +77,7 @@ export default function MyListingsPage() {
         );
       }
 
-      // 📈 NEW: Sort by Pinned first, then by Last Bumped, then by Created At
+      // 📈 Sort by Pinned first, then by Last Bumped, then by Created At
       finalListings.sort((a, b) => {
         if (a.is_pinned && !b.is_pinned) return -1;
         if (!a.is_pinned && b.is_pinned) return 1;
@@ -133,7 +133,7 @@ export default function MyListingsPage() {
     }
   };
 
-  // 🚀 NEW: Bump to Top Logic (Freemium: 1 per 30 days for free, unlimited for Pro)
+  // 🚀 Bump to Top Logic (Freemium: 1 per 30 days for free, unlimited for Pro)
   const handleBump = async (id: string) => {
     const listing = listings.find(l => l.id === id);
     if (userPlan !== 'pro') {
@@ -231,6 +231,11 @@ export default function MyListingsPage() {
               const hasOffers = offersByListing[listing.id] && offersByListing[listing.id].length > 0;
               const isViewingOffers = viewingOffersFor === listing.id;
               const symbol = getSymbol(listing.currency_code);
+              
+              // 📈 Calculate Conversion Rate safely
+              const views = listing.views || 0;
+              const offers = offersByListing[listing.id]?.length || 0;
+              const conversionRate = views > 0 ? ((offers / views) * 100).toFixed(1) : "0.0";
 
               return (
                 <div key={listing.id} className={`group bg-gray-900 rounded-2xl border overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 flex flex-col relative ${listing.is_pinned ? 'border-yellow-500/50 ring-1 ring-yellow-500/20' : 'border-gray-800 hover:border-gray-700'}`}>
@@ -265,29 +270,35 @@ export default function MyListingsPage() {
                       {listing.cost_price > 0 && <span className="text-sm text-gray-500">(Cost: {symbol}{listing.cost_price})</span>}
                     </div>
                     
-                    {/* 📈 NEW: Analytics Section (Pro Feature Teaser) */}
+                    {/* 📈 NEW: Upgraded Pro Analytics Dashboard Widget */}
                     {userPlan === 'pro' ? (
-                      <div className="flex items-center gap-4 mb-4 text-sm bg-gray-800/50 p-3 rounded-lg border border-gray-700">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-gray-400">👁️</span>
-                          <span className="font-bold text-white">{listing.views || 0}</span> 
-                          <span className="text-gray-400">Views</span>
+                      <div className="mb-4 p-4 bg-gradient-to-br from-gray-800/80 to-gray-900/80 rounded-xl border border-blue-500/20 shadow-inner">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-xs font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1">
+                            <span>⚡</span> Pro Analytics
+                          </h4>
+                          <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/20">Live Data</span>
                         </div>
-                        <div className="w-px h-4 bg-gray-700"></div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-gray-400">💬</span>
-                          <span className="font-bold text-white">{offersByListing[listing.id]?.length || 0}</span> 
-                          <span className="text-gray-400">Offers</span>
-                        </div>
-                        <div className="ml-auto flex items-center gap-1 text-xs text-blue-400 font-bold bg-blue-500/10 px-2 py-1 rounded">
-                          ⚡ Pro Analytics
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                          <div className="bg-gray-950/50 p-2 rounded-lg border border-gray-800">
+                            <div className="text-xs text-gray-500 mb-1">Views</div>
+                            <div className="text-lg font-bold text-white">{views}</div>
+                          </div>
+                          <div className="bg-gray-950/50 p-2 rounded-lg border border-gray-800">
+                            <div className="text-xs text-gray-500 mb-1">Offers</div>
+                            <div className="text-lg font-bold text-green-400">{offers}</div>
+                          </div>
+                          <div className="bg-gray-950/50 p-2 rounded-lg border border-gray-800">
+                            <div className="text-xs text-gray-500 mb-1">Conv. Rate</div>
+                            <div className="text-lg font-bold text-purple-400">{conversionRate}%</div>
+                          </div>
                         </div>
                       </div>
                     ) : (
-                      <div className="mb-4 p-3 rounded-lg border border-dashed border-gray-700 bg-gray-800/30 flex items-center justify-between">
-                        <span className="text-sm text-gray-400">🔒 Unlock Views & Conversion Analytics</span>
+                      <div className="mb-4 p-4 rounded-xl border border-dashed border-gray-700 bg-gray-800/30 flex flex-col items-center text-center gap-2">
+                        <span className="text-sm text-gray-400">🔒 Unlock Views, Offers & Conversion Analytics</span>
                         <Link href="/pricing">
-                          <button className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded font-bold transition">Upgrade to Pro</button>
+                          <button className="text-xs bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white px-4 py-2 rounded-lg font-bold transition shadow-lg shadow-blue-900/30">Upgrade to Pro</button>
                         </Link>
                       </div>
                     )}
@@ -321,14 +332,14 @@ export default function MyListingsPage() {
                           <div className="flex gap-2 flex-wrap">
                             <button onClick={() => handlePin(listing.id, listing.is_pinned)} className={`px-3 py-3 rounded-xl text-sm font-bold transition border flex justify-center items-center gap-1 ${listing.is_pinned ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20 hover:bg-yellow-500 hover:text-white' : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white'}`}>📌</button>
                             
-                            {/* 🚀 NEW: Bump Button */}
+                            {/* 🚀 Bump Button */}
                             {listing.status !== 'Sold' && listing.status !== 'Expired' && (
                               <button onClick={() => handleBump(listing.id)} className="px-3 py-3 rounded-xl text-sm font-bold transition border flex justify-center items-center gap-1 bg-purple-500/10 text-purple-400 border-purple-500/20 hover:bg-purple-500 hover:text-white" title="Bump to top of marketplace">
                                 🚀
                               </button>
                             )}
 
-                            {/* NEW MARK AS SOLD BUTTON */}
+                            {/* Mark as Sold Button */}
                             {listing.status !== 'Sold' && listing.status !== 'Expired' && (
                               <button onClick={() => handleMarkAsSold(listing.id)} className="px-4 py-3 bg-green-600/10 hover:bg-green-600 text-green-400 hover:text-white rounded-xl text-sm font-bold transition border border-green-500/20 flex justify-center items-center gap-2">
                                 ✅ Sold
