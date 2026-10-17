@@ -11,6 +11,7 @@ export default function ClientPage() {
   const [listing, setListing] = useState<any>(null);
   const [seller, setSeller] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userCountry, setUserCountry] = useState("Unknown");
   const [loading, setLoading] = useState(true);
   
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -30,17 +31,25 @@ export default function ClientPage() {
   const [isReporting, setIsReporting] = useState(false);
   const [isBlocking, setIsBlocking] = useState(false);
 
+  // 🆕 AUCTION STATES
+  const [timeLeft, setTimeLeft] = useState("");
+  const [isBidding, setIsBidding] = useState(false);
+  const [customBidAmount, setCustomBidAmount] = useState("");
+
   useEffect(() => {
     const fetchData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) setCurrentUser(session.user);
+      if (session) {
+        setCurrentUser(session.user);
+        const { data: profile } = await supabase.from("profiles").select("country").eq("id", session.user.id).single();
+        if (profile) setUserCountry(profile.country || "Unknown");
+      }
 
       const { data: listingData } = await supabase.from("listings").select("*").eq("id", id).single();
       if (listingData) {
         setListing(listingData);
         
-        // 📈 NEW: Silently increment view count in the background
-        // Only increment if the viewer is NOT the owner of the listing
+        // 📈 Silently increment view count in the background
         if (session?.user?.id !== listingData.user_id) {
           supabase
             .from("listings")
@@ -54,7 +63,8 @@ export default function ClientPage() {
         const firstImage = listingData.image_url || (listingData.image_urls && listingData.image_urls[0]);
         setSelectedImage(firstImage || null);
         
-        const { data: sellerData } = await supabase.from("profiles").select("*").eq("id", listingData.user_id).single();
+        // 🆕 Fetch seller WITH country and verification status for safety checks
+        const { data: sellerData } = await supabase.from("profiles").select("full_name, created_at, country, is_verified").eq("id", listingData.user_id).single();
         if (sellerData) {
           setSeller(sellerData);
           
@@ -87,6 +97,86 @@ export default function ClientPage() {
     };
     fetchData();
   }, [id]);
+
+  // 🆕 REALTIME BID SUBSCRIPTION
+  useEffect(() => {
+    if (!listing?.is_auction) return;
+    
+    const channel = supabase
+      .channel(`auction-${id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'listings', filter: `id=eq.${id}` }, (payload) => {
+        setListing((prev: any) => ({ ...prev, current_bid: payload.new.current_bid }));
+        toast.success("🔔 New bid placed!");
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [listing?.is_auction, id]);
+
+  // 🆕 COUNTDOWN TIMER
+  useEffect(() => {
+    if (!listing?.is_auction || !listing.auction_end_time) return;
+
+    const timer = setInterval(() => {
+      const end = new Date(listing.auction_end_time).getTime();
+      const now = new Date().getTime();
+      const distance = end - now;
+
+      if (distance < 0) {
+        clearInterval(timer);
+        setTimeLeft("Auction Ended");
+        setListing((prev: any) => ({ ...prev, status: "Auction Ended" }));
+      } else {
+        const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+        setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [listing?.auction_end_time]);
+
+  // 🆕 HANDLE PLACE BID
+  const handlePlaceBid = async () => {
+    if (!currentUser) { toast.error("Please log in to bid."); router.push("/login"); return; }
+    
+    // 🛡️ SAFETY NET: Country Check
+    if (userCountry !== seller?.country) {
+      toast.error(`🚫 Bidding is restricted to local buyers (${seller?.country}). This protects you from international shipping scams.`);
+      return;
+    }
+
+    const currentBid = listing.current_bid || listing.starting_bid;
+    const bidAmount = customBidAmount ? parseFloat(customBidAmount) : (currentBid + 1);
+    const minBid = currentBid + 1; // Simple $1 increment for V1
+
+    if (bidAmount < minBid) {
+      toast.error(`Bid must be at least ${listing.currency_code === 'NPR' ? 'Rs. ' : '$'}${minBid}`);
+      return;
+    }
+
+    setIsBidding(true);
+    try {
+      // 1. Insert bid record
+      const { error: bidError } = await supabase.from("bids").insert({
+        listing_id: listing.id,
+        bidder_id: currentUser.id,
+        amount: bidAmount
+      });
+      if (bidError) throw bidError;
+
+      // 2. Update listing current bid
+      const { error: updateError } = await supabase.from("listings").update({ current_bid: bidAmount }).eq("id", listing.id);
+      if (updateError) throw updateError;
+
+      toast.success(`🎉 Bid of ${listing.currency_code === 'NPR' ? 'Rs. ' : '$'}${bidAmount} placed successfully!`);
+      setCustomBidAmount("");
+    } catch (error: any) {
+      toast.error("Failed to place bid: " + error.message);
+    }
+    setIsBidding(false);
+  };
 
   const handleToggleSave = async () => {
     if (!currentUser) { toast.error("Please log in to save items."); router.push("/login"); return; }
@@ -160,6 +250,8 @@ export default function ClientPage() {
     return stars;
   };
 
+  const isAuctionActive = listing.is_auction && timeLeft !== "Auction Ended";
+
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
@@ -171,7 +263,14 @@ export default function ClientPage() {
       <div className="max-w-6xl mx-auto px-6 py-12">
         <div className="grid md:grid-cols-2 gap-12">
           <div className="space-y-4">
-            <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden aspect-square flex items-center justify-center">
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden aspect-square flex items-center justify-center relative">
+              {/* 🆕 LIVE AUCTION BADGE */}
+              {isAuctionActive && (
+                <div className="absolute top-4 left-4 z-10 bg-red-600/90 backdrop-blur-md px-4 py-2 rounded-full border border-red-400 flex items-center gap-2 animate-pulse">
+                  <span className="w-2 h-2 bg-white rounded-full"></span>
+                  <span className="text-sm font-bold text-white">LIVE AUCTION • Ends in {timeLeft}</span>
+                </div>
+              )}
               {selectedImage ? <img src={selectedImage} alt={listing.product_name} className="w-full h-full object-contain" /> : <div className="text-gray-600 text-xl">No Image Available</div>}
             </div>
             {listing.image_urls && listing.image_urls.length > 1 && (
@@ -187,7 +286,22 @@ export default function ClientPage() {
           <div className="flex flex-col">
             <div className="mb-2 text-sm text-purple-400 font-bold uppercase tracking-wider">{listing.condition || 'Used'} • {listing.status}</div>
             <h1 className="text-4xl font-bold mb-4 text-white">{listing.product_name}</h1>
-            <div className="text-3xl font-bold text-blue-400 mb-6">{currencySymbol}{listing.sale_price}</div>
+            
+            {/* 🆕 AUCTION PRICING DISPLAY */}
+            {listing.is_auction ? (
+              <div className="mb-6 p-4 bg-gray-900 rounded-xl border border-purple-500/30">
+                <div className="text-sm text-gray-400 mb-1">Current Highest Bid</div>
+                <div className="text-4xl font-bold text-purple-400 mb-2">{currencySymbol}{listing.current_bid || listing.starting_bid}</div>
+                {isAuctionActive && (
+                  <div className="text-sm text-gray-300">
+                    Next minimum bid: <span className="font-bold text-white">{currencySymbol}{(listing.current_bid || listing.starting_bid) + 1}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-3xl font-bold text-blue-400 mb-6">{currencySymbol}{listing.sale_price}</div>
+            )}
+
             <div className="prose prose-invert mb-8">
               <h3 className="text-xl font-bold mb-2 text-white">Description</h3>
               <p className="text-gray-300 whitespace-pre-wrap">{listing.ai_description || listing.description || "No description provided."}</p>
@@ -200,9 +314,11 @@ export default function ClientPage() {
                   <div className="flex-1">
                     <Link href={`/profile/${seller.id}`} className="font-bold text-white text-lg hover:text-blue-400 transition-colors inline-flex items-center gap-1 group">
                       {seller.full_name || "Anonymous Seller"}
+                      {/* 🆕 VERIFIED BADGE */}
+                      {seller.is_verified && <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full border border-green-500/30">✅ Verified</span>}
                       <span className="text-xs text-gray-500 font-normal opacity-0 group-hover:opacity-100 transition-opacity">View Profile →</span>
                     </Link>
-                    <p className="text-sm text-gray-500">Member since {new Date(seller.created_at).getFullYear()}</p>
+                    <p className="text-sm text-gray-500">Location: {seller.country || "Unknown"} • Member since {new Date(seller.created_at).getFullYear()}</p>
                     {sellerRating.count > 0 ? (
                       <div className="flex items-center gap-2 mt-1">
                         <div className="flex text-sm">{renderStars(sellerRating.average)}</div>
@@ -230,12 +346,43 @@ export default function ClientPage() {
                 </div>
               </div>
             )}
+            
+            {/* 🆕 ACTION BUTTONS (Auction vs Standard) */}
             <div className="flex flex-wrap gap-4 mt-auto">
-              {currentUser && currentUser.id !== listing.user_id ? (
-                <Link href={`/chat/${listing.id}?user=${listing.user_id}`} className="flex-1 min-w-[200px] p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-lg flex items-center justify-center gap-2 text-center">💬 Message Seller</Link>
+              {isAuctionActive ? (
+                <>
+                  {currentUser && userCountry === seller?.country ? (
+                    <div className="flex-1 min-w-[200px] flex gap-2">
+                      <input 
+                        type="number" 
+                        value={customBidAmount} 
+                        onChange={(e) => setCustomBidAmount(e.target.value)}
+                        placeholder={`Min: ${(listing.current_bid || listing.starting_bid) + 1}`}
+                        className="flex-1 p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500"
+                      />
+                      <button 
+                        onClick={handlePlaceBid} 
+                        disabled={isBidding}
+                        className="px-6 py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition flex items-center justify-center gap-2"
+                      >
+                        {isBidding ? "..." : "🔨 Place Bid"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex-1 min-w-[200px] p-4 bg-red-900/20 border border-red-500/30 text-red-400 font-bold rounded-xl text-sm text-center flex items-center justify-center gap-2">
+                      🚫 Bidding restricted to local buyers ({seller?.country}) for safety.
+                    </div>
+                  )}
+                </>
               ) : (
-                <div className="flex-1 min-w-[200px] p-4 bg-gray-800 text-gray-400 font-bold rounded-xl text-lg text-center border border-gray-700">{currentUser?.id === listing.user_id ? "This is your listing" : "Log in to message"}</div>
+                // STANDARD LISTING BUTTONS
+                currentUser && currentUser.id !== listing.user_id ? (
+                  <Link href={`/chat/${listing.id}?user=${listing.user_id}`} className="flex-1 min-w-[200px] p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-lg flex items-center justify-center gap-2 text-center">💬 Message Seller</Link>
+                ) : (
+                  <div className="flex-1 min-w-[200px] p-4 bg-gray-800 text-gray-400 font-bold rounded-xl text-lg text-center border border-gray-700">{currentUser?.id === listing.user_id ? "This is your listing" : "Log in to message"}</div>
+                )
               )}
+
               {currentUser && currentUser.id !== listing.user_id && (
                 <button onClick={handleToggleSave} disabled={saving} className={`px-6 py-4 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2 ${isSaved ? 'bg-red-900/30 text-red-400 hover:bg-red-900/50 border-red-500/50' : 'bg-gray-800 hover:bg-gray-700 text-white'}`}>
                   {saving ? "..." : (isSaved ? "❤️ Saved" : "🤍 Save")}
@@ -249,6 +396,17 @@ export default function ClientPage() {
                 </>
               )}
             </div>
+            
+            {/* 🛡️ SAFETY WARNING FOR AUCTIONS */}
+            {listing.is_auction && (
+              <div className="mt-6 p-4 bg-yellow-900/20 border border-yellow-500/30 rounded-xl flex items-start gap-3">
+                <span className="text-xl">⚠️</span>
+                <div>
+                  <h4 className="font-bold text-yellow-400 text-sm mb-1">Safety First</h4>
+                  <p className="text-xs text-gray-400">Margin does not process payments. For high-value auction wins, we strongly recommend Local Pickup in a safe, public place. Never send money via wire transfer or gift cards.</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
