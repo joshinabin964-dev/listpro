@@ -1,10 +1,32 @@
 "use client";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export default function LocationSetup() {
   const [country, setCountry] = useState('');
   const [status, setStatus] = useState('');
+  const [isHidden, setIsHidden] = useState(false);
+  const [hasCountry, setHasCountry] = useState(false);
+
+  // 🕵️ Check if user already has a location on load
+  useEffect(() => {
+    const checkProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('country')
+          .eq('id', user.id)
+          .single();
+        
+        // If they already have a country, hide this component completely!
+        if (profile?.country) {
+          setHasCountry(true);
+        }
+      }
+    };
+    checkProfile();
+  }, []);
 
   const handleSave = async () => {
     if (!country) {
@@ -34,13 +56,15 @@ export default function LocationSetup() {
         if (error) {
           setStatus('Error saving data: ' + error.message);
         } else {
-          setStatus('Success! Your location is saved.');
+          setStatus('✅ Saved!');
           
-          // 🚀 MAGIC SIGNAL: Instantly tells the Dashboard to refresh without a page reload!
+          // 🚀 Tell Dashboard to refresh currency/stats instantly
           window.dispatchEvent(new Event('profileUpdated'));
           
-          // Optional: Clear the input field after success
-          setCountry(''); 
+          //  Vanish after 1.5 seconds
+          setTimeout(() => {
+            setIsHidden(true);
+          }, 1500);
         }
       }
     }, (error) => {
@@ -48,17 +72,22 @@ export default function LocationSetup() {
     });
   };
 
+  // If they already have a country OR we just saved it, render NOTHING.
+  if (hasCountry || isHidden) {
+    return null;
+  }
+
   return (
-    <div className="bg-gray-800 p-6 rounded-lg mb-6 border border-gray-700">
+    <div className="bg-gray-800 p-6 rounded-lg mb-6 border border-gray-700 animate-in fade-in slide-in-from-top-4 duration-500">
       <h2 className="text-xl font-bold mb-4 text-white">📍 Setup Your Location</h2>
-      <p className="text-gray-400 mb-4 text-sm">Enter your country and allow location access to see nearby products.</p>
+      <p className="text-gray-400 mb-4 text-sm">Enter your country and allow location access to see nearby products and correct currency.</p>
       
       <input
         type="text"
-        placeholder="Enter your country (e.g., USA, UK, India)"
+        placeholder="Enter your country (e.g., USA, UK, India, Nepal)"
         value={country}
         onChange={(e) => setCountry(e.target.value)}
-        className="w-full p-3 rounded bg-gray-900 text-white border border-gray-600 mb-4"
+        className="w-full p-3 rounded bg-gray-900 text-white border border-gray-600 mb-4 focus:outline-none focus:border-blue-500 transition"
       />
       
       <button
@@ -68,7 +97,11 @@ export default function LocationSetup() {
         Save My Location
       </button>
       
-      {status && <p className="mt-4 text-sm text-yellow-400">{status}</p>}
+      {status && (
+        <p className={`mt-4 text-sm font-bold ${status.includes('Saved') ? 'text-green-400' : 'text-yellow-400'}`}>
+          {status}
+        </p>
+      )}
     </div>
   );
 }

@@ -64,6 +64,10 @@ export default function ProfilePage() {
       toast.error("Failed to save profile: " + error.message);
     } else {
       toast.success("Profile updated successfully! 🎉");
+      
+      // 🚀 MAGIC SIGNAL: Instantly tells the Dashboard to refresh currency/stats
+      window.dispatchEvent(new Event('profileUpdated'));
+      
       router.refresh(); 
     }
     setSaving(false);
@@ -114,7 +118,7 @@ export default function ProfilePage() {
                 className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-pink-500 transition"
                 placeholder="e.g. Nepal, USA, UK, India, Australia..."
               />
-              <p className="text-xs text-gray-500 mt-1">This determines the currency symbol shown on your listings.</p>
+              <p className="text-xs text-gray-500 mt-1">This determines the currency symbol shown on your dashboard and listings.</p>
             </div>
 
             {/* Phone Number - GLOBAL FORMAT */}
@@ -151,7 +155,7 @@ export default function ProfilePage() {
               >
                 {saving ? (
                   <>
-                    <span className="animate-spin">️</span> Saving...
+                    <span className="animate-spin">⚙️</span> Saving...
                   </>
                 ) : (
                   "💾 Save Profile"
