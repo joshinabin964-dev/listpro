@@ -39,6 +39,18 @@ export default function ClientPage() {
       if (listingData) {
         setListing(listingData);
         
+        // 📈 NEW: Silently increment view count in the background
+        // Only increment if the viewer is NOT the owner of the listing
+        if (session?.user?.id !== listingData.user_id) {
+          supabase
+            .from("listings")
+            .update({ views: (listingData.views || 0) + 1 })
+            .eq("id", listingData.id)
+            .then(({ error }) => {
+              if (error) console.error("Failed to increment views:", error);
+            });
+        }
+        
         const firstImage = listingData.image_url || (listingData.image_urls && listingData.image_urls[0]);
         setSelectedImage(firstImage || null);
         
