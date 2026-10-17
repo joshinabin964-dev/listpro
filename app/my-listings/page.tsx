@@ -76,6 +76,16 @@ export default function MyListingsPage() {
           expiredIds.includes(l.id) ? { ...l, status: 'Expired' } : l
         );
       }
+
+      // 📈 NEW: Sort by Pinned first, then by Last Bumped, then by Created At
+      finalListings.sort((a, b) => {
+        if (a.is_pinned && !b.is_pinned) return -1;
+        if (!a.is_pinned && b.is_pinned) return 1;
+        const dateA = new Date(a.last_bumped_at || a.created_at).getTime();
+        const dateB = new Date(b.last_bumped_at || b.created_at).getTime();
+        return dateB - dateA;
+      });
+
       setListings(finalListings);
 
       const { data: offersData } = await supabase.from("offers").select("*").eq("seller_id", session.user.id).eq("status", "pending");
@@ -120,6 +130,41 @@ export default function MyListingsPage() {
     if (!error) {
       setListings(listings.map(l => l.id === id ? { ...l, is_pinned: !currentPinStatus } : l));
       toast.success(!currentPinStatus ? "📌 Pinned to top!" : "Unpinned.");
+    }
+  };
+
+  // 🚀 NEW: Bump to Top Logic (Freemium: 1 per 30 days for free, unlimited for Pro)
+  const handleBump = async (id: string) => {
+    const listing = listings.find(l => l.id === id);
+    if (userPlan !== 'pro') {
+      const lastBumped = new Date(listing.last_bumped_at || listing.created_at);
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      if (lastBumped > thirtyDaysAgo) {
+        toast.error("🔒 Free users get 1 bump per 30 days. Upgrade to Pro for unlimited bumps!");
+        router.push("/pricing");
+        return;
+      }
+    }
+    
+    const now = new Date().toISOString();
+    const { error } = await supabase.from("listings").update({ last_bumped_at: now }).eq("id", id);
+    if (!error) {
+      setListings(prev => {
+        const updated = prev.map(l => l.id === id ? { ...l, last_bumped_at: now } : l);
+        // Re-sort to put the bumped item at the top (respecting pins)
+        return updated.sort((a, b) => {
+          if (a.is_pinned && !b.is_pinned) return -1;
+          if (!a.is_pinned && b.is_pinned) return 1;
+          const dateA = new Date(a.last_bumped_at || a.created_at).getTime();
+          const dateB = new Date(b.last_bumped_at || b.created_at).getTime();
+          return dateB - dateA;
+        });
+      });
+      toast.success("🚀 Listing bumped to the top!");
+    } else {
+      toast.error("Error bumping listing.");
     }
   };
 
@@ -192,7 +237,6 @@ export default function MyListingsPage() {
                   <div className="relative aspect-[4/3] bg-gray-800 overflow-hidden">
                     <img src={listing.image_url} alt={listing.product_name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     
-                    {/* UPDATED BADGE LOGIC TO INCLUDE EXPIRED */}
                     <div className={`absolute top-4 right-4 backdrop-blur-md px-3 py-1 rounded-full border ${listing.status === 'Sold' ? 'bg-green-600/90 border-green-400' : listing.status === 'Pending' ? 'bg-yellow-600/90 border-yellow-400' : listing.status === 'Expired' ? 'bg-gray-600/90 border-gray-400' : 'bg-gray-950/80 border-gray-700'}`}>
                       <span className="text-xs font-bold text-white uppercase">{listing.status}</span>
                     </div>
@@ -220,6 +264,33 @@ export default function MyListingsPage() {
                       <span className="text-3xl font-bold text-blue-400">{symbol}{listing.sale_price}</span>
                       {listing.cost_price > 0 && <span className="text-sm text-gray-500">(Cost: {symbol}{listing.cost_price})</span>}
                     </div>
+                    
+                    {/* 📈 NEW: Analytics Section (Pro Feature Teaser) */}
+                    {userPlan === 'pro' ? (
+                      <div className="flex items-center gap-4 mb-4 text-sm bg-gray-800/50 p-3 rounded-lg border border-gray-700">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-gray-400">👁️</span>
+                          <span className="font-bold text-white">{listing.views || 0}</span> 
+                          <span className="text-gray-400">Views</span>
+                        </div>
+                        <div className="w-px h-4 bg-gray-700"></div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-gray-400">💬</span>
+                          <span className="font-bold text-white">{offersByListing[listing.id]?.length || 0}</span> 
+                          <span className="text-gray-400">Offers</span>
+                        </div>
+                        <div className="ml-auto flex items-center gap-1 text-xs text-blue-400 font-bold bg-blue-500/10 px-2 py-1 rounded">
+                          ⚡ Pro Analytics
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mb-4 p-3 rounded-lg border border-dashed border-gray-700 bg-gray-800/30 flex items-center justify-between">
+                        <span className="text-sm text-gray-400">🔒 Unlock Views & Conversion Analytics</span>
+                        <Link href="/pricing">
+                          <button className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded font-bold transition">Upgrade to Pro</button>
+                        </Link>
+                      </div>
+                    )}
                     
                     <div className="relative mt-auto">
                       {isViewingOffers ? (
@@ -250,15 +321,22 @@ export default function MyListingsPage() {
                           <div className="flex gap-2 flex-wrap">
                             <button onClick={() => handlePin(listing.id, listing.is_pinned)} className={`px-3 py-3 rounded-xl text-sm font-bold transition border flex justify-center items-center gap-1 ${listing.is_pinned ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20 hover:bg-yellow-500 hover:text-white' : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white'}`}>📌</button>
                             
+                            {/* 🚀 NEW: Bump Button */}
+                            {listing.status !== 'Sold' && listing.status !== 'Expired' && (
+                              <button onClick={() => handleBump(listing.id)} className="px-3 py-3 rounded-xl text-sm font-bold transition border flex justify-center items-center gap-1 bg-purple-500/10 text-purple-400 border-purple-500/20 hover:bg-purple-500 hover:text-white" title="Bump to top of marketplace">
+                                🚀
+                              </button>
+                            )}
+
                             {/* NEW MARK AS SOLD BUTTON */}
                             {listing.status !== 'Sold' && listing.status !== 'Expired' && (
                               <button onClick={() => handleMarkAsSold(listing.id)} className="px-4 py-3 bg-green-600/10 hover:bg-green-600 text-green-400 hover:text-white rounded-xl text-sm font-bold transition border border-green-500/20 flex justify-center items-center gap-2">
-                                ✅ Mark Sold
+                                ✅ Sold
                               </button>
                             )}
 
                             {hasOffers && (
-                              <button onClick={() => setViewingOffersFor(listing.id)} className="flex-1 px-4 py-3 bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white rounded-xl text-sm font-bold transition border border-green-500/20 flex justify-center items-center gap-2">💰 View Offers</button>
+                              <button onClick={() => setViewingOffersFor(listing.id)} className="flex-1 px-4 py-3 bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white rounded-xl text-sm font-bold transition border border-green-500/20 flex justify-center items-center gap-2">💰 Offers</button>
                             )}
                             <button onClick={() => setCopyMenuOpen(copyMenuOpen === listing.id ? null : listing.id)} className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-bold transition border border-gray-700 flex justify-center items-center gap-2">📋 Copy</button>
                             <button onClick={() => handleDelete(listing.id, listing.image_url)} disabled={deletingId === listing.id} className="px-4 py-3 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-xl text-sm font-bold transition border border-red-500/20">
