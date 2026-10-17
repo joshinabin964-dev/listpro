@@ -5,9 +5,46 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import LocationSetup from "@/components/LocationSetup";
 
+// THE GLOBAL CURRENCY MAP
+const currencyMap: Record<string, { symbol: string; code: string }> = {
+  "Nepal": { symbol: "Rs.", code: "NPR" }, "India": { symbol: "₹", code: "INR" },
+  "Pakistan": { symbol: "Rs.", code: "PKR" }, "Bangladesh": { symbol: "৳", code: "BDT" },
+  "USA": { symbol: "$", code: "USD" }, "United States": { symbol: "$", code: "USD" },
+  "UK": { symbol: "£", code: "GBP" }, "United Kingdom": { symbol: "£", code: "GBP" },
+  "Canada": { symbol: "C$", code: "CAD" }, "Australia": { symbol: "A$", code: "AUD" },
+  "New Zealand": { symbol: "NZ$", code: "NZD" }, "China": { symbol: "¥", code: "CNY" },
+  "Japan": { symbol: "¥", code: "JPY" }, "South Korea": { symbol: "₩", code: "KRW" },
+  "Singapore": { symbol: "S$", code: "SGD" }, "Malaysia": { symbol: "RM", code: "MYR" },
+  "Indonesia": { symbol: "Rp", code: "IDR" }, "Thailand": { symbol: "฿", code: "THB" },
+  "Vietnam": { symbol: "₫", code: "VND" }, "Philippines": { symbol: "₱", code: "PHP" },
+  "UAE": { symbol: "د.إ", code: "AED" }, "Saudi Arabia": { symbol: "﷼", code: "SAR" },
+  "Qatar": { symbol: "﷼", code: "QAR" }, "Kuwait": { symbol: "د.ك", code: "KWD" },
+  "Oman": { symbol: "﷼", code: "OMR" }, "Israel": { symbol: "₪", code: "ILS" },
+  "Turkey": { symbol: "₺", code: "TRY" }, "Egypt": { symbol: "£", code: "EGP" },
+  "South Africa": { symbol: "R", code: "ZAR" }, "Nigeria": { symbol: "₦", code: "NGN" },
+  "Kenya": { symbol: "KSh", code: "KES" }, "Ghana": { symbol: "₵", code: "GHS" },
+  "Germany": { symbol: "€", code: "EUR" }, "France": { symbol: "€", code: "EUR" },
+  "Italy": { symbol: "€", code: "EUR" }, "Spain": { symbol: "€", code: "EUR" },
+  "Switzerland": { symbol: "CHF", code: "CHF" }, "Sweden": { symbol: "kr", code: "SEK" },
+  "Norway": { symbol: "kr", code: "NOK" }, "Denmark": { symbol: "kr", code: "DKK" },
+  "Poland": { symbol: "zł", code: "PLN" }, "Russia": { symbol: "₽", code: "RUB" },
+  "Ukraine": { symbol: "₴", code: "UAH" }, "Brazil": { symbol: "R$", code: "BRL" },
+  "Argentina": { symbol: "$", code: "ARS" }, "Mexico": { symbol: "$", code: "MXN" },
+  "Colombia": { symbol: "$", code: "COP" }, "Chile": { symbol: "$", code: "CLP" },
+  "Peru": { symbol: "S/.", code: "PEN" }, "default": { symbol: "$", code: "USD" }
+};
+
+const getSymbol = (country: string | null) => {
+  if (!country) return '$';
+  const userCountry = country.trim().toLowerCase();
+  const matchedKey = Object.keys(currencyMap).find(key => key.toLowerCase() === userCountry);
+  return matchedKey ? currencyMap[matchedKey].symbol : '$';
+};
+
 export default function DashboardPage() {
   const [plan, setPlan] = useState("free");
   const [stats, setStats] = useState({ revenue: 0, profit: 0 });
+  const [currencySymbol, setCurrencySymbol] = useState("$");
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -24,6 +61,8 @@ export default function DashboardPage() {
       if (profile) {
         setPlan(profile.plan || "free");
         setUserName(profile.full_name);
+        // 🌍 Set the correct currency symbol based on country
+        setCurrencySymbol(getSymbol(profile.country));
       }
 
       const { data: listings } = await supabase.from("listings").select("sale_price, cost_price, status").eq("user_id", session.user.id);
@@ -149,11 +188,15 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8">
           <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-6 shadow-xl">
             <h2 className="text-xs md:text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Total Revenue (Sold Items)</h2>
-            <div className="text-3xl md:text-4xl font-bold text-blue-400">${stats.revenue.toFixed(2)}</div>
+            {/* 🌍 DYNAMIC CURRENCY SYMBOL */}
+            <div className="text-3xl md:text-4xl font-bold text-blue-400">{currencySymbol}{stats.revenue.toFixed(2)}</div>
           </div>
           <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-6 shadow-xl">
             <h2 className="text-xs md:text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Net Profit</h2>
-            <div className={`text-3xl md:text-4xl font-bold ${stats.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>${stats.profit.toFixed(2)}</div>
+            {/* 🌍 DYNAMIC CURRENCY SYMBOL */}
+            <div className={`text-3xl md:text-4xl font-bold ${stats.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {currencySymbol}{stats.profit.toFixed(2)}
+            </div>
           </div>
         </div>
 
@@ -176,7 +219,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* UPDATED GRID: Mobile-optimized padding and gaps */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
           <Link href="/generate" className="block">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-blue-500 transition cursor-pointer group">
