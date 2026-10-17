@@ -20,6 +20,7 @@ export default function MarketplacePage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [distanceFilter, setDistanceFilter] = useState<string>("all");
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [userCountry, setUserCountry] = useState("Unknown");
   const [loading, setLoading] = useState(true);
   
   const [savedListingIds, setSavedListingIds] = useState<string[]>([]);
@@ -29,6 +30,12 @@ export default function MarketplacePage() {
   const [maxPrice, setMaxPrice] = useState("");
   const [conditionFilter, setConditionFilter] = useState("all");
   
+  // 📸 VISUAL SEARCH STATES
+  const [visualSearchModalOpen, setVisualSearchModalOpen] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [visualKeyword, setVisualKeyword] = useState("");
+  const [includeInternational, setIncludeInternational] = useState(false);
+  
   const router = useRouter();
 
   useEffect(() => {
@@ -37,9 +44,12 @@ export default function MarketplacePage() {
       if (session) {
         setCurrentUser(session.user);
         
-        const { data: profile } = await supabase.from("profiles").select("latitude, longitude").eq("id", session.user.id).single();
-        if (profile && profile.latitude && profile.longitude) {
-          setUserLocation({ lat: profile.latitude, lng: profile.longitude });
+        const { data: profile } = await supabase.from("profiles").select("latitude, longitude, country, plan, visual_searches_used").eq("id", session.user.id).single();
+        if (profile) {
+          if (profile.latitude && profile.longitude) {
+            setUserLocation({ lat: profile.latitude, lng: profile.longitude });
+          }
+          setUserCountry(profile.country || "Unknown");
         }
 
         const { data: savedData } = await supabase
@@ -70,15 +80,9 @@ export default function MarketplacePage() {
       query = query.or(`product_name.ilike.%${term}%,ai_description.ilike.%${term}%,description.ilike.%${term}%`);
     }
 
-    if (minPrice) {
-      query = query.gte("sale_price", Number(minPrice));
-    }
-    if (maxPrice) {
-      query = query.lte("sale_price", Number(maxPrice));
-    }
-    if (conditionFilter !== "all") {
-      query = query.eq("condition", conditionFilter);
-    }
+    if (minPrice) query = query.gte("sale_price", Number(minPrice));
+    if (maxPrice) query = query.lte("sale_price", Number(maxPrice));
+    if (conditionFilter !== "all") query = query.eq("condition", conditionFilter);
 
     const { data, error } = await query.order("created_at", { ascending: false });
     
@@ -104,6 +108,97 @@ export default function MarketplacePage() {
     setLoading(false);
   };
 
+  // 📸 VISUAL SEARCH HANDLER
+  const handleVisualSearch = async () => {
+    if (!visualKeyword.trim()) {
+      toast.error("Please add a few keywords to describe the item.");
+      return;
+    }
+
+    if (!currentUser) {
+      toast.error("Please log in to use Visual Search.");
+      router.push("/login");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Fetch latest profile data to check limits and country
+      const { data: profile } = await supabase.from("profiles").select("plan, visual_searches_used, country").eq("id", currentUser.id).single();
+      const userPlan = profile?.plan || "free";
+      const searchesUsed = profile?.visual_searches_used || 0;
+      const country = profile?.country || "Unknown";
+      setUserCountry(country);
+
+      // 🚫 ENFORCE 2-SEARCH LIMIT FOR FREE USERS
+      if (userPlan === "free" && searchesUsed >= 2) {
+        toast.error("🔒 Free limit reached (2/2 visual searches). Upgrade to Pro for unlimited!");
+        router.push("/pricing");
+        setVisualSearchModalOpen(false);
+        setLoading(false);
+        return;
+      }
+
+      // Increment counter if free
+      if (userPlan === "free") {
+        await supabase.from("profiles").update({ visual_searches_used: searchesUsed + 1 }).eq("id", currentUser.id);
+      }
+
+      // 🌍 LOCAL-FIRST SEARCH LOGIC
+      let query = supabase
+        .from("listings")
+        .select("*, profiles(country)")
+        .eq("is_public", true)
+        .in("status", ["Available", "Active"]);
+
+      // If international is NOT checked, strictly filter by user's country
+      if (!includeInternational) {
+        query = query.eq("profiles.country", country);
+      }
+
+      query = query.or(`product_name.ilike.%${visualKeyword}%,ai_description.ilike.%${visualKeyword}%,description.ilike.%${visualKeyword}%`);
+
+      if (minPrice) query = query.gte("sale_price", Number(minPrice));
+      if (maxPrice) query = query.lte("sale_price", Number(maxPrice));
+      if (conditionFilter !== "all") query = query.eq("condition", conditionFilter);
+
+      const { data, error } = await query.order("created_at", { ascending: false });
+
+      if (data && !error) {
+        const listingsWithDistance = data.map((listing: any) => {
+          if (userLocation && listing.latitude && listing.longitude) {
+            const dist = getDistanceFromLatLonInKm(userLocation.lat, userLocation.lng, listing.latitude, listing.longitude);
+            return { ...listing, distance: dist };
+          }
+          return { ...listing, distance: 9999 };
+        });
+
+        const filteredListings = listingsWithDistance.filter((listing: any) => {
+          if (distanceFilter === "all") return true;
+          return listing.distance <= Number(distanceFilter);
+        });
+
+        filteredListings.sort((a: any, b: any) => a.distance - b.distance);
+        setListings(filteredListings);
+        setSearchTerm(visualKeyword); 
+        
+        const msg = includeInternational 
+          ? `Found ${filteredListings.length} items (including international price checks).` 
+          : `Found ${filteredListings.length} local items!`;
+        toast.success(msg);
+      } else {
+        setListings([]);
+        toast.error("Error searching items.");
+      }
+    } catch (err) {
+      toast.error("Something went wrong.");
+    }
+    setLoading(false);
+    setVisualSearchModalOpen(false);
+    setSelectedImage(null);
+    setVisualKeyword("");
+  };
+
   const handleToggleSave = async (e: React.MouseEvent, listingId: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -117,12 +212,7 @@ export default function MarketplacePage() {
     const isSaved = savedListingIds.includes(listingId);
 
     if (isSaved) {
-      const { error } = await supabase
-        .from("saved_items")
-        .delete()
-        .eq("user_id", currentUser.id)
-        .eq("listing_id", listingId);
-
+      const { error } = await supabase.from("saved_items").delete().eq("user_id", currentUser.id).eq("listing_id", listingId);
       if (!error) {
         setSavedListingIds(prev => prev.filter(id => id !== listingId));
         toast.success("Removed from saved items");
@@ -130,10 +220,7 @@ export default function MarketplacePage() {
         toast.error("Failed to remove item.");
       }
     } else {
-      const { error } = await supabase
-        .from("saved_items")
-        .insert({ user_id: currentUser.id, listing_id: listingId });
-
+      const { error } = await supabase.from("saved_items").insert({ user_id: currentUser.id, listing_id: listingId });
       if (!error) {
         setSavedListingIds(prev => [...prev, listingId]);
         toast.success("Saved to wishlist! ❤️");
@@ -170,6 +257,25 @@ export default function MarketplacePage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
+      {/* Hidden file input for visual search */}
+      <input 
+        type="file" 
+        id="visualSearchInput" 
+        accept="image/*" 
+        className="hidden" 
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              setSelectedImage(reader.result as string);
+              setVisualSearchModalOpen(true);
+            };
+            reader.readAsDataURL(file);
+          }
+        }} 
+      />
+
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
           <Link href="/"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Margin</h1></Link>
@@ -188,13 +294,23 @@ export default function MarketplacePage() {
 
         <form onSubmit={handleSearch} className="max-w-5xl mx-auto mb-12 space-y-4">
           <div className="flex flex-col md:flex-row gap-4">
-            <input 
-              type="text" 
-              value={searchTerm} 
-              onChange={(e) => setSearchTerm(e.target.value)} 
-              placeholder="Search for anything (e.g. iPhone, Sofa, Car, Nike)..." 
-              className="flex-1 p-4 bg-gray-900 border border-gray-800 rounded-xl text-white focus:outline-none focus:border-blue-500" 
-            />
+            <div className="relative flex-1 flex">
+              <input 
+                type="text" 
+                value={searchTerm} 
+                onChange={(e) => setSearchTerm(e.target.value)} 
+                placeholder="Search for anything (e.g. iPhone, Sofa, Car, Nike)..." 
+                className="flex-1 p-4 bg-gray-900 border border-gray-800 rounded-l-xl text-white focus:outline-none focus:border-blue-500" 
+              />
+              <button 
+                type="button"
+                onClick={() => document.getElementById('visualSearchInput')?.click()}
+                className="px-4 bg-gray-800 border border-l-0 border-gray-800 rounded-r-xl text-gray-400 hover:text-white hover:bg-gray-700 transition flex items-center justify-center"
+                title="Search by Picture"
+              >
+                📸
+              </button>
+            </div>
             <button type="submit" className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition">
               Search
             </button>
@@ -282,7 +398,6 @@ export default function MarketplacePage() {
 
                     {listing.distance < 9999 && (<div className="absolute top-4 right-4 bg-black/70 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-green-400 border border-green-500/30 z-10">📍 {listing.distance.toFixed(1)} km</div>)}
                     
-                    {/* Standard img tag - works without config */}
                     <div className="aspect-square bg-gray-800 overflow-hidden">
                       {firstImage ? (
                         <img src={firstImage} alt={listing.product_name || "Listing"} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
@@ -309,6 +424,52 @@ export default function MarketplacePage() {
           </div>
         )}
       </div>
+
+      {/* 📸 VISUAL SEARCH MODAL */}
+      {visualSearchModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h3 className="text-xl font-bold mb-2 text-white flex items-center gap-2">📸 Visual Search</h3>
+            <p className="text-gray-400 text-sm mb-4">Add a few keywords to describe the item in the photo.</p>
+            
+            {selectedImage && (
+              <div className="mb-4 rounded-xl overflow-hidden border border-gray-700 h-40 bg-gray-800 flex items-center justify-center">
+                <img src={selectedImage} alt="Preview" className="max-h-full max-w-full object-contain" />
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-400 mb-2">Keywords (Required)</label>
+              <input 
+                type="text" 
+                value={visualKeyword} 
+                onChange={(e) => setVisualKeyword(e.target.value)}
+                className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                placeholder="e.g. brown leather chair, vintage lamp"
+                autoFocus
+              />
+            </div>
+
+            <div className="mb-6 flex items-center gap-3 p-3 bg-gray-800/50 rounded-xl border border-gray-700">
+              <input 
+                type="checkbox" 
+                id="includeInternational" 
+                checked={includeInternational} 
+                onChange={(e) => setIncludeInternational(e.target.checked)} 
+                className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 bg-gray-700 border-gray-600" 
+              />
+              <label htmlFor="includeInternational" className="text-sm text-gray-300 cursor-pointer">
+                🌍 Include International Results <span className="text-xs text-gray-500 block">(Price Check Only)</span>
+              </label>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => { setVisualSearchModalOpen(false); setSelectedImage(null); setVisualKeyword(""); }} className="flex-1 p-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition">Cancel</button>
+              <button onClick={handleVisualSearch} className="flex-1 p-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition">Search</button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
