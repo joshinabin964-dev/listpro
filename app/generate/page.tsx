@@ -72,7 +72,7 @@ const compressImage = async (file: File): Promise<File> => {
         const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
-        const MAX_DIMENSION = 1200; // Max width/height to prevent huge uploads
+        const MAX_DIMENSION = 1200; 
 
         if (width > height && width > MAX_DIMENSION) {
           height *= MAX_DIMENSION / width;
@@ -102,7 +102,7 @@ const compressImage = async (file: File): Promise<File> => {
             }
           },
           file.type === 'image/png' ? 'image/png' : 'image/jpeg',
-          0.75 // 75% quality is the perfect balance of size vs visual fidelity
+          0.75 
         );
       };
       img.onerror = (error) => reject(error);
@@ -123,22 +123,33 @@ export default function GeneratePage() {
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [currency, setCurrency] = useState(currencyMap["default"]); 
+  
+  // 🆕 AUCTION STATES
+  const [listingType, setListingType] = useState<'fixed' | 'auction'>('fixed');
+  const [startingBid, setStartingBid] = useState("");
+  const [auctionDuration, setAuctionDuration] = useState("24h");
+  const [shippingPolicy, setShippingPolicy] = useState("local_pickup");
+  const [userPlan, setUserPlan] = useState("free");
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   useEffect(() => {
-    const getUserCurrency = async () => {
+    const getUserData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        const { data: profile } = await supabase.from("profiles").select("country").eq("id", session.user.id).single();
-        if (profile && profile.country) {
-          const userCountry = profile.country.trim().toLowerCase();
-          const matchedKey = Object.keys(currencyMap).find(key => key.toLowerCase() === userCountry);
-          if (matchedKey) setCurrency(currencyMap[matchedKey]);
+        const { data: profile } = await supabase.from("profiles").select("country, plan").eq("id", session.user.id).single();
+        if (profile) {
+          setUserPlan(profile.plan || "free");
+          if (profile.country) {
+            const userCountry = profile.country.trim().toLowerCase();
+            const matchedKey = Object.keys(currencyMap).find(key => key.toLowerCase() === userCountry);
+            if (matchedKey) setCurrency(currencyMap[matchedKey]);
+          }
         }
       }
     };
-    getUserCurrency();
+    getUserData();
   }, []);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -167,8 +178,16 @@ export default function GeneratePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (imageFiles.length === 0 || !title || !salePrice) {
-      toast.error("Please fill in Title, Sale Price, and upload a Photo.");
+    if (imageFiles.length === 0 || !title) {
+      toast.error("Please fill in Title and upload a Photo.");
+      return;
+    }
+    if (listingType === 'fixed' && !salePrice) {
+      toast.error("Please enter a Sale Price.");
+      return;
+    }
+    if (listingType === 'auction' && !startingBid) {
+      toast.error("Please enter a Starting Bid.");
       return;
     }
     setLoading(true);
@@ -189,7 +208,6 @@ export default function GeneratePage() {
 
       const { data: userLoc } = await supabase.from("profiles").select("latitude, longitude, country").eq("id", session.user.id).single();
       
-      // 🔒 PRIVACY FIX: Round coordinates to 2 decimal places (~1km accuracy)
       const rawLat = userLoc?.latitude;
       const rawLng = userLoc?.longitude;
       const userLat = rawLat ? Math.round(rawLat * 100) / 100 : null;
@@ -198,8 +216,6 @@ export default function GeneratePage() {
       const publicUrls: string[] = [];
       for (const file of imageFiles) {
         let fileToUpload = file;
-        
-        // 📸 COMPRESSION TRIGGER: Shrink image before sending to Supabase
         if (file.type.startsWith('image/')) {
           try {
             fileToUpload = await compressImage(file);
@@ -218,6 +234,16 @@ export default function GeneratePage() {
       }
 
       const finalStatus = isPublic ? "Active" : "Draft";
+      
+      // 🆕 Calculate Auction End Time
+      let auctionEndTime = null;
+      if (listingType === 'auction' && userPlan === 'pro') {
+        const now = new Date();
+        if (auctionDuration === '24h') now.setHours(now.getHours() + 24);
+        else if (auctionDuration === '3d') now.setDate(now.getDate() + 3);
+        else if (auctionDuration === '7d') now.setDate(now.getDate() + 7);
+        auctionEndTime = now.toISOString();
+      }
 
       const { error: dbError } = await supabase.from('listings').insert({
         user_id: session.user.id, 
@@ -227,21 +253,27 @@ export default function GeneratePage() {
         ai_title: `${title} - ${condition}`, 
         ai_bullets: ["High Quality", "Fast Shipping", "Satisfaction Guaranteed"],
         ai_description: description, 
-        cost_price: parseFloat(costPrice) || 0, 
-        sale_price: parseFloat(salePrice) || 0,
+        cost_price: listingType === 'fixed' ? (parseFloat(costPrice) || 0) : 0, 
+        sale_price: listingType === 'fixed' ? (parseFloat(salePrice) || 0) : (parseFloat(startingBid) || 0),
         status: finalStatus, 
         is_public: isPublic, 
         latitude: userLat, 
         longitude: userLng, 
         is_pinned: false,
-        currency_code: currency.code 
+        currency_code: currency.code,
+        // 🆕 AUCTION FIELDS
+        is_auction: listingType === 'auction' && userPlan === 'pro',
+        starting_bid: listingType === 'auction' && userPlan === 'pro' ? (parseFloat(startingBid) || 0) : 0,
+        current_bid: listingType === 'auction' && userPlan === 'pro' ? (parseFloat(startingBid) || 0) : 0,
+        auction_end_time: auctionEndTime,
+        shipping_policy: listingType === 'auction' ? shippingPolicy : 'domestic'
       });
 
       if (dbError) { 
         toast.error("Error saving listing: " + dbError.message); 
       } else { 
         if (isPublic) {
-          toast.success("🌍 Published to Public Marketplace!");
+          toast.success(listingType === 'auction' ? "🔴 Live Auction Published!" : "🌍 Published to Public Marketplace!");
         } else {
           toast.success("💾 Saved to Drafts successfully!");
         }
@@ -264,6 +296,40 @@ export default function GeneratePage() {
         <p className="text-gray-400 mb-8">List your product in <span className="text-white font-bold">{currency.code}</span> ({currency.symbol}).</p>
 
         <form onSubmit={handleSubmit} className="space-y-6 bg-gray-900 p-8 rounded-2xl border border-gray-800">
+          
+          {/* 🆕 LISTING TYPE SELECTOR */}
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Listing Type</label>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => setListingType('fixed')}
+                className={`p-4 rounded-xl border text-left transition ${listingType === 'fixed' ? 'bg-blue-600/20 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
+              >
+                <div className="font-bold text-lg">Fixed Price</div>
+                <div className="text-sm opacity-80">Standard listing with a set price.</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (userPlan === 'free') {
+                    toast.error("🔒 Live Auctions are a Pro feature! Upgrade to unlock.");
+                    router.push("/pricing");
+                  } else {
+                    setListingType('auction');
+                  }
+                }}
+                className={`p-4 rounded-xl border text-left transition relative ${listingType === 'auction' ? 'bg-purple-600/20 border-purple-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
+              >
+                {userPlan === 'free' && (
+                  <div className="absolute top-2 right-2 bg-yellow-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full">PRO</div>
+                )}
+                <div className="font-bold text-lg flex items-center gap-2">🔴 Live Auction <span className="text-xs bg-purple-500/30 px-2 py-0.5 rounded">Pro</span></div>
+                <div className="text-sm opacity-80">Let buyers bid and drive up the price.</div>
+              </button>
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-2">Product Photos (Up to 5)</label>
             <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" multiple className="hidden" />
@@ -293,22 +359,74 @@ export default function GeneratePage() {
             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg" placeholder="e.g. iPhone 13 Pro Max" />
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Sale Price ({currency.symbol}) *</label>
-              <input type="number" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg" placeholder="0.00" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Cost Price ({currency.symbol})</label>
-              <input type="number" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-green-500 text-lg" placeholder="0.00" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Status</label>
-              <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg">
-                <option value="Available">Available</option><option value="Sold">Sold</option><option value="Pending">Pending</option>
-              </select>
-            </div>
+          {/* 🆕 DYNAMIC PRICING FIELDS */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {listingType === 'auction' ? (
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-gray-400 mb-2">Starting Bid ({currency.symbol}) *</label>
+                <input 
+                  type="number" 
+                  value={startingBid} 
+                  onChange={(e) => setStartingBid(e.target.value)} 
+                  required 
+                  className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 text-lg" 
+                  placeholder="0.00" 
+                />
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Sale Price ({currency.symbol}) *</label>
+                  <input type="number" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg" placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Cost Price ({currency.symbol})</label>
+                  <input type="number" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-green-500 text-lg" placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Status</label>
+                  <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg">
+                    <option value="Available">Available</option><option value="Sold">Sold</option><option value="Pending">Pending</option>
+                  </select>
+                </div>
+              </>
+            )}
           </div>
+
+          {/* 🆕 AUCTION SETTINGS PANEL (Pro Only) */}
+          {listingType === 'auction' && userPlan === 'pro' && (
+            <div className="p-6 bg-purple-900/10 border border-purple-500/30 rounded-xl space-y-4">
+              <h3 className="text-lg font-bold text-purple-400 flex items-center gap-2">🔴 Auction Settings</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Auction Duration</label>
+                  <select 
+                    value={auctionDuration} 
+                    onChange={(e) => setAuctionDuration(e.target.value)} 
+                    className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 text-lg"
+                  >
+                    <option value="24h">24 Hours</option>
+                    <option value="3d">3 Days</option>
+                    <option value="7d">7 Days</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Shipping Policy 🛡️</label>
+                  <select 
+                    value={shippingPolicy} 
+                    onChange={(e) => setShippingPolicy(e.target.value)} 
+                    className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 text-lg"
+                  >
+                    <option value="local_pickup">📍 Local Pickup Only (Safest)</option>
+                    <option value="domestic">🇺🇸 Domestic Shipping Only</option>
+                    <option value="worldwide">🌍 Worldwide Shipping</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-2">⚠️ For high-value auctions, Local Pickup is highly recommended to prevent fraud.</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-2">Condition</label>
@@ -328,7 +446,7 @@ export default function GeneratePage() {
           </div>
 
           <button type="submit" disabled={loading} className="w-full p-4 bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold rounded-xl transition disabled:opacity-50 flex justify-center items-center gap-2">
-            {loading ? (<><span className="animate-spin">⚙️</span> Processing...</>) : (<>{isPublic ? "🌍 Publish to Marketplace" : "💾 Save to Drafts"}</>)}
+            {loading ? (<><span className="animate-spin">⚙️</span> Processing...</>) : (<>{isPublic ? (listingType === 'auction' ? "🔴 Publish Live Auction" : "🌍 Publish to Marketplace") : "💾 Save to Drafts"}</>)}
           </button>
         </form>
       </div>
