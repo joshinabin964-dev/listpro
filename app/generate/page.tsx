@@ -60,7 +60,6 @@ const currencyMap: Record<string, { symbol: string; code: string }> = {
   "default": { symbol: "$", code: "USD" }
 };
 
-// 📸 PHOTO COMPRESSION HELPER (Shrinks images by ~70-80% before upload)
 const compressImage = async (file: File): Promise<File> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -119,12 +118,17 @@ export default function GeneratePage() {
   const [status, setStatus] = useState("Available");
   const [description, setDescription] = useState("");
   const [isPublic, setIsPublic] = useState(false);
+  
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  
+  // 🆕 VIDEO PROOF STATES
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoPreview, setVideoPreview] = useState<string | null>(null);
+  
   const [loading, setLoading] = useState(false);
   const [currency, setCurrency] = useState(currencyMap["default"]); 
   
-  // 🆕 AUCTION STATES
   const [listingType, setListingType] = useState<'fixed' | 'auction'>('fixed');
   const [startingBid, setStartingBid] = useState("");
   const [auctionDuration, setAuctionDuration] = useState("24h");
@@ -132,6 +136,7 @@ export default function GeneratePage() {
   const [userPlan, setUserPlan] = useState("free");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -174,6 +179,27 @@ export default function GeneratePage() {
   const removeImage = (index: number) => {
     setImageFiles(imageFiles.filter((_, i) => i !== index));
     setImagePreviews(imagePreviews.filter((_, i) => i !== index));
+  };
+
+  // 🆕 VIDEO HANDLERS
+  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 50 * 1024 * 1024) { // 50MB limit
+        toast.error("Video must be under 50MB.");
+        return;
+      }
+      setVideoFile(file);
+      const url = URL.createObjectURL(file);
+      setVideoPreview(url);
+    }
+    if (videoInputRef.current) videoInputRef.current.value = "";
+  };
+
+  const removeVideo = () => {
+    setVideoFile(null);
+    setVideoPreview(null);
+    if (videoInputRef.current) videoInputRef.current.value = "";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -233,9 +259,24 @@ export default function GeneratePage() {
         publicUrls.push(publicUrl);
       }
 
+      // 🆕 UPLOAD VIDEO IF EXISTS
+      let videoUrl = null;
+      if (videoFile) {
+        const fileExt = videoFile.name.split('.').pop() || 'mp4';
+        const fileName = `${session.user.id}-vid-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+        
+        const { error: uploadError } = await supabase.storage.from('product-videos').upload(fileName, videoFile);
+        if (uploadError) { 
+          toast.error("Video upload failed. Make sure the 'product-videos' bucket exists and is public."); 
+          setLoading(false); 
+          return; 
+        }
+        const { data: { publicUrl } } = supabase.storage.from('product-videos').getPublicUrl(fileName);
+        videoUrl = publicUrl;
+      }
+
       const finalStatus = isPublic ? "Active" : "Draft";
       
-      // 🆕 Calculate Auction End Time
       let auctionEndTime = null;
       if (listingType === 'auction' && userPlan === 'pro') {
         const now = new Date();
@@ -261,12 +302,14 @@ export default function GeneratePage() {
         longitude: userLng, 
         is_pinned: false,
         currency_code: currency.code,
-        // 🆕 AUCTION FIELDS
         is_auction: listingType === 'auction' && userPlan === 'pro',
         starting_bid: listingType === 'auction' && userPlan === 'pro' ? (parseFloat(startingBid) || 0) : 0,
         current_bid: listingType === 'auction' && userPlan === 'pro' ? (parseFloat(startingBid) || 0) : 0,
         auction_end_time: auctionEndTime,
-        shipping_policy: listingType === 'auction' ? shippingPolicy : 'domestic'
+        shipping_policy: listingType === 'auction' ? shippingPolicy : 'domestic',
+        // 🆕 VIDEO PROOF FIELDS
+        has_video_proof: !!videoUrl,
+        video_url: videoUrl
       });
 
       if (dbError) { 
@@ -297,33 +340,15 @@ export default function GeneratePage() {
 
         <form onSubmit={handleSubmit} className="space-y-6 bg-gray-900 p-8 rounded-2xl border border-gray-800">
           
-          {/* 🆕 LISTING TYPE SELECTOR */}
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-2">Listing Type</label>
             <div className="grid grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => setListingType('fixed')}
-                className={`p-4 rounded-xl border text-left transition ${listingType === 'fixed' ? 'bg-blue-600/20 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
-              >
+              <button type="button" onClick={() => setListingType('fixed')} className={`p-4 rounded-xl border text-left transition ${listingType === 'fixed' ? 'bg-blue-600/20 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
                 <div className="font-bold text-lg">Fixed Price</div>
                 <div className="text-sm opacity-80">Standard listing with a set price.</div>
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (userPlan === 'free') {
-                    toast.error("🔒 Live Auctions are a Pro feature! Upgrade to unlock.");
-                    router.push("/pricing");
-                  } else {
-                    setListingType('auction');
-                  }
-                }}
-                className={`p-4 rounded-xl border text-left transition relative ${listingType === 'auction' ? 'bg-purple-600/20 border-purple-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
-              >
-                {userPlan === 'free' && (
-                  <div className="absolute top-2 right-2 bg-yellow-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full">PRO</div>
-                )}
+              <button type="button" onClick={() => { if (userPlan === 'free') { toast.error("🔒 Live Auctions are a Pro feature! Upgrade to unlock."); router.push("/pricing"); } else { setListingType('auction'); } }} className={`p-4 rounded-xl border text-left transition relative ${listingType === 'auction' ? 'bg-purple-600/20 border-purple-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
+                {userPlan === 'free' && (<div className="absolute top-2 right-2 bg-yellow-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full">PRO</div>)}
                 <div className="font-bold text-lg flex items-center gap-2">🔴 Live Auction <span className="text-xs bg-purple-500/30 px-2 py-0.5 rounded">Pro</span></div>
                 <div className="text-sm opacity-80">Let buyers bid and drive up the price.</div>
               </button>
@@ -354,24 +379,39 @@ export default function GeneratePage() {
             )}
           </div>
 
+          {/* 🆕 VIDEO PROOF SECTION */}
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2 flex items-center gap-2">
+              <span className="text-green-400">🎥</span> Video Proof (Highly Recommended)
+              <span className="text-xs text-gray-500 font-normal">Builds instant trust & prevents scams</span>
+            </label>
+            <input type="file" ref={videoInputRef} onChange={handleVideoChange} accept="video/*" className="hidden" />
+            {!videoPreview ? (
+              <div onClick={() => videoInputRef.current?.click()} className="w-full h-48 border-2 border-dashed border-green-500/30 bg-green-500/5 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-green-500 hover:bg-green-500/10 transition group">
+                <span className="text-4xl mb-2 group-hover:scale-110 transition">🎬</span>
+                <span className="text-green-400 font-medium">Upload a short video proof</span>
+                <span className="text-xs text-gray-500 mt-1">Max 50MB • Shows the item is real</span>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="relative w-full bg-black rounded-xl overflow-hidden border border-green-500/30 aspect-video flex items-center justify-center">
+                  <video src={videoPreview} controls className="w-full h-full object-contain" />
+                  <button type="button" onClick={removeVideo} className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-lg text-xs font-bold shadow-lg">Remove Video</button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-2">Product Title (Required)</label>
             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg" placeholder="e.g. iPhone 13 Pro Max" />
           </div>
 
-          {/* 🆕 DYNAMIC PRICING FIELDS */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {listingType === 'auction' ? (
               <div className="md:col-span-3">
                 <label className="block text-sm font-medium text-gray-400 mb-2">Starting Bid ({currency.symbol}) *</label>
-                <input 
-                  type="number" 
-                  value={startingBid} 
-                  onChange={(e) => setStartingBid(e.target.value)} 
-                  required 
-                  className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 text-lg" 
-                  placeholder="0.00" 
-                />
+                <input type="number" value={startingBid} onChange={(e) => setStartingBid(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 text-lg" placeholder="0.00" />
               </div>
             ) : (
               <>
@@ -393,19 +433,13 @@ export default function GeneratePage() {
             )}
           </div>
 
-          {/* 🆕 AUCTION SETTINGS PANEL (Pro Only) */}
           {listingType === 'auction' && userPlan === 'pro' && (
             <div className="p-6 bg-purple-900/10 border border-purple-500/30 rounded-xl space-y-4">
               <h3 className="text-lg font-bold text-purple-400 flex items-center gap-2">🔴 Auction Settings</h3>
-              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-2">Auction Duration</label>
-                  <select 
-                    value={auctionDuration} 
-                    onChange={(e) => setAuctionDuration(e.target.value)} 
-                    className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 text-lg"
-                  >
+                  <select value={auctionDuration} onChange={(e) => setAuctionDuration(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 text-lg">
                     <option value="24h">24 Hours</option>
                     <option value="3d">3 Days</option>
                     <option value="7d">7 Days</option>
@@ -413,11 +447,7 @@ export default function GeneratePage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-2">Shipping Policy 🛡️</label>
-                  <select 
-                    value={shippingPolicy} 
-                    onChange={(e) => setShippingPolicy(e.target.value)} 
-                    className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 text-lg"
-                  >
+                  <select value={shippingPolicy} onChange={(e) => setShippingPolicy(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 text-lg">
                     <option value="local_pickup">📍 Local Pickup Only (Safest)</option>
                     <option value="domestic">🇺🇸 Domestic Shipping Only</option>
                     <option value="worldwide">🌍 Worldwide Shipping</option>
