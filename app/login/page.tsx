@@ -41,6 +41,7 @@ export default function LoginPage() {
     }
   };
 
+  // ️ DIAGNOSTIC FORGOT PASSWORD FUNCTION
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) {
@@ -49,15 +50,20 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/dashboard`,
-      });
-      if (error) throw error;
-      toast.success("📧 Password reset link sent! Please check your email.");
+      // 🛑 REMOVED 'redirectTo' to prevent Supabase from silently blocking the request due to URL mismatches
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      
+      if (error) {
+        // This prints the EXACT error to your browser console so we can see it
+        console.error("SUPABASE AUTH ERROR:", error);
+        throw error;
+      }
+      
+      toast.success("📧 Reset link sent! Check your inbox (and spam folder).");
       setShowForgotPassword(false);
-      setEmail("");
-      setPassword("");
+      setEmail(""); // Clear the email field for security
     } catch (error: any) {
+      console.error("CAUGHT ERROR IN FORGOT PASSWORD:", error);
       toast.error(error.message || "Failed to send reset link.");
     } finally {
       setLoading(false);
