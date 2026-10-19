@@ -79,6 +79,9 @@ export default function MyListingsPage() {
   const [holdRequests, setHoldRequests] = useState<any[]>([]);
   const [processingHold, setProcessingHold] = useState<string | null>(null);
   
+  // 🛡️ EDGE CASE: Prevent double-clicks on async actions
+  const [processingAction, setProcessingAction] = useState<string | null>(null);
+  
   const router = useRouter();
 
   useEffect(() => {
@@ -157,6 +160,7 @@ export default function MyListingsPage() {
 
   const handleMarkAsSold = async (id: string) => {
     if (!confirm("Mark this item as Sold? It will be hidden from the public marketplace.")) return;
+    setProcessingAction(id);
     const { error } = await supabase.from("listings").update({ status: 'Sold' }).eq("id", id);
     if (!error) {
       setListings(listings.map(l => l.id === id ? { ...l, status: 'Sold' } : l));
@@ -164,15 +168,20 @@ export default function MyListingsPage() {
     } else {
       toast.error("Error marking as sold.");
     }
+    setProcessingAction(null);
   };
 
   const handlePin = async (id: string, currentPinStatus: boolean) => {
     if (userPlan !== 'pro') { toast.error("🔒 Pin to Top is a Pro feature! Upgrade to use this."); router.push("/pricing"); return; }
+    setProcessingAction(id);
     const { error } = await supabase.from("listings").update({ is_pinned: !currentPinStatus }).eq("id", id);
     if (!error) {
       setListings(listings.map(l => l.id === id ? { ...l, is_pinned: !currentPinStatus } : l));
       toast.success(!currentPinStatus ? "📌 Pinned to top!" : "Unpinned.");
+    } else {
+      toast.error("Error pinning listing.");
     }
+    setProcessingAction(null);
   };
 
   // 🚀 Bump to Top Logic (Freemium: 1 per 30 days for free, unlimited for Pro)
@@ -190,6 +199,7 @@ export default function MyListingsPage() {
       }
     }
     
+    setProcessingAction(id);
     const now = new Date().toISOString();
     const { error } = await supabase.from("listings").update({ last_bumped_at: now }).eq("id", id);
     if (!error) {
@@ -208,6 +218,7 @@ export default function MyListingsPage() {
     } else {
       toast.error("Error bumping listing.");
     }
+    setProcessingAction(null);
   };
 
   const handleCopy = (listing: any, type: string) => {
@@ -220,12 +231,18 @@ export default function MyListingsPage() {
     if (type === "standard") textToCopy = `${title}\nPrice: ${symbol}${price}\nCondition: ${condition}\n\n${desc}`;
     else if (type === "fb") textToCopy = `🔥 FOR SALE: ${title}\n💰 Price: ${symbol}${price} (Firm)\n📍 Condition: ${condition}\n\n${desc}\n\n📩 DM me if interested!`;
     else if (type === "ebay") textToCopy = `Title: ${title} - ${condition}\nPrice: ${symbol}${price}\n\nDescription:\n${desc}`;
-    navigator.clipboard.writeText(textToCopy);
-    setCopyMenuOpen(null);
-    toast.success(`✅ Copied ${type.toUpperCase()} template!`);
+    
+    // 🛡️ EDGE CASE: Clipboard API can fail or be blocked on some mobile browsers
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      setCopyMenuOpen(null);
+      toast.success(`✅ Copied ${type.toUpperCase()} template!`);
+    }).catch(() => {
+      toast.error("Failed to copy. Please copy manually.");
+    });
   };
 
   const handleOfferAction = async (offerId: string, action: 'accepted' | 'declined', listingId: string) => {
+    setProcessingAction(offerId);
     const { error } = await supabase.from("offers").update({ status: action }).eq("id", offerId);
     if (!error) {
       toast.success(`Offer ${action === 'accepted' ? 'Accepted' : 'Declined'}!`);
@@ -240,7 +257,10 @@ export default function MyListingsPage() {
         await supabase.from("listings").update({ status: 'Pending' }).eq("id", listingId);
         setListings(prev => prev.map(l => l.id === listingId ? { ...l, status: 'Pending' } : l));
       }
+    } else {
+      toast.error("Failed to update offer.");
     }
+    setProcessingAction(null);
   };
 
   // 🆕 HOLD REQUEST HANDLERS
@@ -293,21 +313,23 @@ export default function MyListingsPage() {
   if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><p>Loading...</p></main>;
 
   return (
+    // 📱 MOBILE POLISH: Adjusted padding for smaller screens
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link href="/dashboard"><h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent cursor-pointer">Margin</h1></Link>
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard"><button className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-sm font-bold rounded-lg transition">Dashboard</button></Link>
-            <Link href="/marketplace"><button className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-lg transition">🌍 Public Marketplace</button></Link>
-            <Link href="/generate"><button className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-lg transition shadow-lg shadow-blue-900/50">+ Create New</button></Link>
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
+          <Link href="/dashboard"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent cursor-pointer">Margin</h1></Link>
+          <div className="flex items-center gap-2 md:gap-4">
+            <Link href="/dashboard"><button className="px-3 md:px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-xs md:text-sm font-bold rounded-lg transition">Dashboard</button></Link>
+            <Link href="/marketplace"><button className="hidden sm:block px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs md:text-sm font-bold rounded-lg transition">🌍 Marketplace</button></Link>
+            <Link href="/generate"><button className="px-3 md:px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs md:text-sm font-bold rounded-lg transition shadow-lg shadow-blue-900/50">+ New</button></Link>
           </div>
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        <h2 className="text-4xl font-bold mb-2">My Listings</h2>
-        <p className="text-gray-400 text-lg mb-12">Manage, copy, and publish your products.</p>
+      {/* 📱 MOBILE POLISH: Adjusted padding and text sizes */}
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-8 md:py-12">
+        <h2 className="text-3xl md:text-4xl font-bold mb-2">My Listings</h2>
+        <p className="text-gray-400 text-base md:text-lg mb-8 md:mb-12">Manage, copy, and publish your products.</p>
 
         {listings.length === 0 ? (
           <div className="text-center py-24 bg-gray-900/50 rounded-3xl border border-gray-800 border-dashed">
@@ -315,18 +337,17 @@ export default function MyListingsPage() {
             <Link href="/generate"><button className="px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition">Create Your First Listing</button></Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          // 📱 MOBILE POLISH: Adjusted grid gaps for mobile
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
             {listings.map((listing) => {
               const hasOffers = offersByListing[listing.id] && offersByListing[listing.id].length > 0;
               const isViewingOffers = viewingOffersFor === listing.id;
               const symbol = getSymbol(listing.currency_code);
               
-              // 📈 Calculate Conversion Rate safely
               const views = listing.views || 0;
               const offers = offersByListing[listing.id]?.length || 0;
               const conversionRate = views > 0 ? ((offers / views) * 100).toFixed(1) : "0.0";
 
-              // 🆕 FILTER HOLDS FOR THIS SPECIFIC LISTING
               const listingHolds = holdRequests.filter(r => r.listing_id === listing.id);
               const activeHold = listingHolds.find(r => r.status === "approved");
               const pendingHolds = listingHolds.filter(r => r.status === "pending");
@@ -357,14 +378,14 @@ export default function MyListingsPage() {
                     )}
                   </div>
                   
-                  <div className="p-6 flex-grow flex flex-col">
-                    <h3 className="text-xl font-bold text-white mb-2 line-clamp-1">{listing.ai_title?.split(' - ')[0] || listing.product_name}</h3>
+                  {/* 📱 MOBILE POLISH: Adjusted padding inside card */}
+                  <div className="p-4 md:p-6 flex-grow flex flex-col">
+                    <h3 className="text-lg md:text-xl font-bold text-white mb-2 line-clamp-1">{listing.ai_title?.split(' - ')[0] || listing.product_name}</h3>
                     <div className="flex items-baseline gap-1 mb-4">
-                      <span className="text-3xl font-bold text-blue-400">{symbol}{listing.sale_price}</span>
-                      {listing.cost_price > 0 && <span className="text-sm text-gray-500">(Cost: {symbol}{listing.cost_price})</span>}
+                      <span className="text-2xl md:text-3xl font-bold text-blue-400">{symbol}{listing.sale_price}</span>
+                      {listing.cost_price > 0 && <span className="text-xs md:text-sm text-gray-500">(Cost: {symbol}{listing.cost_price})</span>}
                     </div>
                     
-                    {/* 🆕 HOLD REQUESTS UI FOR SELLER */}
                     {pendingHolds.length > 0 && !isViewingOffers && (
                       <div className="mb-4 p-4 bg-yellow-900/20 border border-yellow-500/30 rounded-xl">
                         <h4 className="text-sm font-bold text-yellow-400 mb-2">⏳ Pending Hold Requests:</h4>
@@ -400,7 +421,6 @@ export default function MyListingsPage() {
                       </div>
                     )}
 
-                    {/* 📈 Pro Analytics Dashboard Widget (UNCHANGED) */}
                     {userPlan === 'pro' ? (
                       <div className="mb-4 p-4 bg-gradient-to-br from-gray-800/80 to-gray-900/80 rounded-xl border border-blue-500/20 shadow-inner">
                         <div className="flex items-center justify-between mb-3">
@@ -442,8 +462,12 @@ export default function MyListingsPage() {
                               <div key={offer.id} className="bg-gray-800 p-3 rounded-lg border border-gray-700 flex justify-between items-center">
                                 <span className="font-bold text-white">{symbol}{offer.amount}</span>
                                 <div className="flex gap-2">
-                                  <button onClick={() => handleOfferAction(offer.id, 'accepted', listing.id)} className="px-2 py-1 bg-green-600 hover:bg-green-500 text-white text-xs rounded font-bold">Accept</button>
-                                  <button onClick={() => handleOfferAction(offer.id, 'declined', listing.id)} className="px-2 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded font-bold">Decline</button>
+                                  <button onClick={() => handleOfferAction(offer.id, 'accepted', listing.id)} disabled={processingAction === offer.id} className="px-2 py-1 bg-green-600 hover:bg-green-500 text-white text-xs rounded font-bold disabled:opacity-50">
+                                    {processingAction === offer.id ? "..." : "Accept"}
+                                  </button>
+                                  <button onClick={() => handleOfferAction(offer.id, 'declined', listing.id)} disabled={processingAction === offer.id} className="px-2 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded font-bold disabled:opacity-50">
+                                    {processingAction === offer.id ? "..." : "Decline"}
+                                  </button>
                                 </div>
                               </div>
                             ))}
@@ -453,26 +477,27 @@ export default function MyListingsPage() {
                       ) : (
                         <>
                           {copyMenuOpen === listing.id && (
-                            <div className="absolute bottom-full left-0 mb-2 w-full bg-gray-800 border border-gray-700 rounded-xl shadow-2xl overflow-hidden z-10">
+                            // 📱 MOBILE POLISH: Added z-50 to ensure it floats above everything on small screens
+                            <div className="absolute bottom-full left-0 mb-2 w-full bg-gray-800 border border-gray-700 rounded-xl shadow-2xl overflow-hidden z-50">
                               <button onClick={() => handleCopy(listing, "standard")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition border-b border-gray-700"> Standard Copy</button>
                               <button onClick={() => handleCopy(listing, "fb")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition border-b border-gray-700">📘 Facebook Marketplace</button>
                               <button onClick={() => handleCopy(listing, "ebay")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition">🛒 eBay Optimized</button>
                             </div>
                           )}
                           <div className="flex gap-2 flex-wrap">
-                            <button onClick={() => handlePin(listing.id, listing.is_pinned)} className={`px-3 py-3 rounded-xl text-sm font-bold transition border flex justify-center items-center gap-1 ${listing.is_pinned ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20 hover:bg-yellow-500 hover:text-white' : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white'}`}>📌</button>
+                            <button onClick={() => handlePin(listing.id, listing.is_pinned)} disabled={processingAction === listing.id} className={`px-3 py-3 rounded-xl text-sm font-bold transition border flex justify-center items-center gap-1 ${listing.is_pinned ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20 hover:bg-yellow-500 hover:text-white' : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 hover:text-white'} disabled:opacity-50`}>
+                              {processingAction === listing.id ? "..." : "📌"}
+                            </button>
                             
-                            {/* 🚀 Bump Button */}
                             {listing.status !== 'Sold' && listing.status !== 'Expired' && (
-                              <button onClick={() => handleBump(listing.id)} className="px-3 py-3 rounded-xl text-sm font-bold transition border flex justify-center items-center gap-1 bg-purple-500/10 text-purple-400 border-purple-500/20 hover:bg-purple-500 hover:text-white" title="Bump to top of marketplace">
-                                🚀
+                              <button onClick={() => handleBump(listing.id)} disabled={processingAction === listing.id} className="px-3 py-3 rounded-xl text-sm font-bold transition border flex justify-center items-center gap-1 bg-purple-500/10 text-purple-400 border-purple-500/20 hover:bg-purple-500 hover:text-white disabled:opacity-50" title="Bump to top of marketplace">
+                                {processingAction === listing.id ? "..." : "🚀"}
                               </button>
                             )}
 
-                            {/* Mark as Sold Button */}
                             {listing.status !== 'Sold' && listing.status !== 'Expired' && (
-                              <button onClick={() => handleMarkAsSold(listing.id)} className="px-4 py-3 bg-green-600/10 hover:bg-green-600 text-green-400 hover:text-white rounded-xl text-sm font-bold transition border border-green-500/20 flex justify-center items-center gap-2">
-                                ✅ Sold
+                              <button onClick={() => handleMarkAsSold(listing.id)} disabled={processingAction === listing.id} className="px-4 py-3 bg-green-600/10 hover:bg-green-600 text-green-400 hover:text-white rounded-xl text-sm font-bold transition border border-green-500/20 flex justify-center items-center gap-2 disabled:opacity-50">
+                                {processingAction === listing.id ? "..." : "✅ Sold"}
                               </button>
                             )}
 
@@ -480,7 +505,7 @@ export default function MyListingsPage() {
                               <button onClick={() => setViewingOffersFor(listing.id)} className="flex-1 px-4 py-3 bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white rounded-xl text-sm font-bold transition border border-green-500/20 flex justify-center items-center gap-2">💰 Offers</button>
                             )}
                             <button onClick={() => setCopyMenuOpen(copyMenuOpen === listing.id ? null : listing.id)} className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-bold transition border border-gray-700 flex justify-center items-center gap-2">📋 Copy</button>
-                            <button onClick={() => handleDelete(listing.id, listing.image_url)} disabled={deletingId === listing.id} className="px-4 py-3 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-xl text-sm font-bold transition border border-red-500/20">
+                            <button onClick={() => handleDelete(listing.id, listing.image_url)} disabled={deletingId === listing.id} className="px-4 py-3 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-xl text-sm font-bold transition border border-red-500/20 disabled:opacity-50">
                               {deletingId === listing.id ? "..." : "🗑️"}
                             </button>
                           </div>
