@@ -31,7 +31,7 @@ export default function ClientPage() {
   const [isReporting, setIsReporting] = useState(false);
   const [isBlocking, setIsBlocking] = useState(false);
 
-  // 🆕 HOLD REQUEST STATES
+  // 🆕 INJECTED: 24-HOUR HOLD STATES
   const [holdRequest, setHoldRequest] = useState<any>(null);
   const [isRequestingHold, setIsRequestingHold] = useState(false);
 
@@ -53,29 +53,50 @@ export default function ClientPage() {
       if (listingData) {
         setListing(listingData);
         
+        // 📈 Silently increment view count in the background
         if (session?.user?.id !== listingData.user_id) {
-          supabase.from("listings").update({ views: (listingData.views || 0) + 1 }).eq("id", listingData.id);
+          supabase
+            .from("listings")
+            .update({ views: (listingData.views || 0) + 1 })
+            .eq("id", listingData.id)
+            .then(({ error }) => {
+              if (error) console.error("Failed to increment views:", error);
+            });
         }
         
         const firstImage = listingData.image_url || (listingData.image_urls && listingData.image_urls[0]);
         setSelectedImage(firstImage || null);
         
+        // 🆕 Fetch seller WITH country and verification status for safety checks
         const { data: sellerData } = await supabase.from("profiles").select("full_name, created_at, country, is_verified").eq("id", listingData.user_id).single();
         if (sellerData) {
           setSeller(sellerData);
-          const { data: reviewsData } = await supabase.from("reviews").select("rating, comment, created_at").eq("seller_id", listingData.user_id).order("created_at", { ascending: false });
+          
+          const { data: reviewsData } = await supabase
+            .from("reviews")
+            .select("rating, comment, created_at")
+            .eq("seller_id", listingData.user_id)
+            .order("created_at", { ascending: false });
+          
           if (reviewsData && reviewsData.length > 0) {
             const total = reviewsData.reduce((sum, r) => sum + r.rating, 0);
-            setSellerRating({ average: total / reviewsData.length, count: reviewsData.length });
+            const avg = total / reviewsData.length;
+            setSellerRating({ average: avg, count: reviewsData.length });
             setReviews(reviewsData);
           }
         }
 
         if (session) {
-          const { data: savedData } = await supabase.from("saved_items").select("id").eq("user_id", session.user.id).eq("listing_id", listingData.id).single();
+          const { data: savedData } = await supabase
+            .from("saved_items")
+            .select("id")
+            .eq("user_id", session.user.id)
+            .eq("listing_id", listingData.id)
+            .single();
+          
           setIsSaved(!!savedData);
 
-          // 🆕 Check if current user has an active/pending hold request for this item
+          // 🆕 INJECTED: Check if current user has an active/pending hold request for this item
           const { data: holdData } = await supabase
             .from("hold_requests")
             .select("*")
@@ -93,21 +114,30 @@ export default function ClientPage() {
     fetchData();
   }, [id]);
 
+  // 🆕 REALTIME BID SUBSCRIPTION
   useEffect(() => {
     if (!listing?.is_auction) return;
-    const channel = supabase.channel(`auction-${id}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'listings', filter: `id=eq.${id}` }, (payload) => {
-      setListing((prev: any) => ({ ...prev, current_bid: payload.new.current_bid }));
-      toast.success("🔔 New bid placed!");
-    }).subscribe();
+    
+    const channel = supabase
+      .channel(`auction-${id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'listings', filter: `id=eq.${id}` }, (payload) => {
+        setListing((prev: any) => ({ ...prev, current_bid: payload.new.current_bid }));
+        toast.success("🔔 New bid placed!");
+      })
+      .subscribe();
+
     return () => { supabase.removeChannel(channel); };
   }, [listing?.is_auction, id]);
 
+  // 🆕 COUNTDOWN TIMER
   useEffect(() => {
     if (!listing?.is_auction || !listing.auction_end_time) return;
+
     const timer = setInterval(() => {
       const end = new Date(listing.auction_end_time).getTime();
       const now = new Date().getTime();
       const distance = end - now;
+
       if (distance < 0) {
         clearInterval(timer);
         setTimeLeft("Auction Ended");
@@ -119,26 +149,114 @@ export default function ClientPage() {
         setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
       }
     }, 1000);
+
     return () => clearInterval(timer);
   }, [listing?.auction_end_time]);
 
+  // 🆕 HANDLE PLACE BID
   const handlePlaceBid = async () => {
     if (!currentUser) { toast.error("Please log in to bid."); router.push("/login"); return; }
-    if (userCountry !== seller?.country) { toast.error(`🚫 Bidding is restricted to local buyers (${seller?.country}).`); return; }
+    
+    // 🛡️ SAFETY NET: Country Check
+    if (userCountry !== seller?.country) {
+      toast.error(`🚫 Bidding is restricted to local buyers (${seller?.country}). This protects you from international shipping scams.`);
+      return;
+    }
+
     const currentBid = listing.current_bid || listing.starting_bid;
     const bidAmount = customBidAmount ? parseFloat(customBidAmount) : (currentBid + 1);
-    if (bidAmount < currentBid + 1) { toast.error(`Bid must be at least $${currentBid + 1}`); return; }
+    const minBid = currentBid + 1; // Simple $1 increment for V1
+
+    if (bidAmount < minBid) {
+      toast.error(`Bid must be at least ${listing.currency_code === 'NPR' ? 'Rs. ' : '$'}${minBid}`);
+      return;
+    }
+
     setIsBidding(true);
     try {
-      await supabase.from("bids").insert({ listing_id: listing.id, bidder_id: currentUser.id, amount: bidAmount });
-      await supabase.from("listings").update({ current_bid: bidAmount }).eq("id", listing.id);
-      toast.success(`🎉 Bid of $${bidAmount} placed!`);
+      // 1. Insert bid record
+      const { error: bidError } = await supabase.from("bids").insert({
+        listing_id: listing.id,
+        bidder_id: currentUser.id,
+        amount: bidAmount
+      });
+      if (bidError) throw bidError;
+
+      // 2. Update listing current bid
+      const { error: updateError } = await supabase.from("listings").update({ current_bid: bidAmount }).eq("id", listing.id);
+      if (updateError) throw updateError;
+
+      toast.success(`🎉 Bid of ${listing.currency_code === 'NPR' ? 'Rs. ' : '$'}${bidAmount} placed successfully!`);
       setCustomBidAmount("");
-    } catch (error: any) { toast.error("Failed to place bid: " + error.message); }
+    } catch (error: any) {
+      toast.error("Failed to place bid: " + error.message);
+    }
     setIsBidding(false);
   };
 
-  // 🆕 HANDLE REQUEST HOLD
+  const handleToggleSave = async () => {
+    if (!currentUser) { toast.error("Please log in to save items."); router.push("/login"); return; }
+    setSaving(true);
+    if (isSaved) {
+      const { error } = await supabase.from("saved_items").delete().eq("user_id", currentUser.id).eq("listing_id", listing.id);
+      if (!error) { setIsSaved(false); toast.success("Removed from saved items"); }
+      else { toast.error("Failed to remove item."); }
+    } else {
+      const { error } = await supabase.from("saved_items").insert({ user_id: currentUser.id, listing_id: listing.id });
+      if (!error) { setIsSaved(true); toast.success("Saved to wishlist! ❤️"); }
+      else { toast.error("Failed to save item."); }
+    }
+    setSaving(false);
+  };
+
+  const handleSubmitReview = async () => {
+    if (!currentUser) { toast.error("Please log in to leave a review."); return; }
+    if (!listing) return;
+    setIsSubmittingReview(true);
+    try {
+      const { error } = await supabase.from("reviews").insert({
+        reviewer_id: currentUser.id, seller_id: listing.user_id, listing_id: listing.id,
+        rating: reviewRating, comment: reviewComment.trim()
+      });
+      if (error) throw error;
+      toast.success("⭐ Review submitted successfully!");
+      setShowReviewModal(false); setReviewRating(5); setReviewComment("");
+      router.refresh();
+    } catch (error) { toast.error("Failed to submit review: " + (error as Error).message); }
+    setIsSubmittingReview(false);
+  };
+
+  const handleReport = async () => {
+    if (!currentUser) { toast.error("Please log in to report."); return; }
+    setIsReporting(true);
+    try {
+      const { error } = await supabase.from("reports").insert({
+        reporter_id: currentUser.id, reported_listing_id: listing.id, reported_user_id: listing.user_id, reason: reportReason
+      });
+      if (error) throw error;
+      toast.success("🚩 Report submitted. Our team will review it.");
+      setShowReportModal(false);
+    } catch (error) { toast.error("Failed to submit report."); }
+    setIsReporting(false);
+  };
+
+  const handleBlockUser = async () => {
+    if (!currentUser) { toast.error("Please log in to block users."); return; }
+    if (!confirm(`Are you sure you want to block ${seller?.full_name || 'this user'}? You will no longer see their listings.`)) return;
+    setIsBlocking(true);
+    try {
+      const blockedList = JSON.parse(localStorage.getItem('blockedUsers') || '[]');
+      if (!blockedList.includes(listing.user_id)) {
+        blockedList.push(listing.user_id);
+        localStorage.setItem('blockedUsers', JSON.stringify(blockedList));
+      }
+      toast.success("🚫 User blocked successfully.");
+      router.push("/marketplace");
+    } catch (error) { toast.error("Failed to block user."); }
+    setIsBlocking(false);
+  };
+
+  // 🆕 INJECTED: HANDLE REQUEST HOLD
   const handleRequestHold = async () => {
     if (!currentUser) { toast.error("Please log in to request a hold."); router.push("/login"); return; }
     setIsRequestingHold(true);
@@ -158,58 +276,6 @@ export default function ClientPage() {
       toast.error("Failed to request hold: " + error.message);
     }
     setIsRequestingHold(false);
-  };
-
-  const handleToggleSave = async () => {
-    if (!currentUser) { toast.error("Please log in to save items."); router.push("/login"); return; }
-    setSaving(true);
-    if (isSaved) {
-      const { error } = await supabase.from("saved_items").delete().eq("user_id", currentUser.id).eq("listing_id", listing.id);
-      if (!error) { setIsSaved(false); toast.success("Removed from saved items"); }
-    } else {
-      const { error } = await supabase.from("saved_items").insert({ user_id: currentUser.id, listing_id: listing.id });
-      if (!error) { setIsSaved(true); toast.success("Saved to wishlist! ❤️"); }
-    }
-    setSaving(false);
-  };
-
-  const handleSubmitReview = async () => {
-    if (!currentUser) { toast.error("Please log in to leave a review."); return; }
-    setIsSubmittingReview(true);
-    try {
-      await supabase.from("reviews").insert({ reviewer_id: currentUser.id, seller_id: listing.user_id, listing_id: listing.id, rating: reviewRating, comment: reviewComment.trim() });
-      toast.success("⭐ Review submitted successfully!");
-      setShowReviewModal(false); setReviewRating(5); setReviewComment("");
-      router.refresh();
-    } catch (error) { toast.error("Failed to submit review."); }
-    setIsSubmittingReview(false);
-  };
-
-  const handleReport = async () => {
-    if (!currentUser) { toast.error("Please log in to report."); return; }
-    setIsReporting(true);
-    try {
-      await supabase.from("reports").insert({ reporter_id: currentUser.id, reported_listing_id: listing.id, reported_user_id: listing.user_id, reason: reportReason });
-      toast.success("🚩 Report submitted.");
-      setShowReportModal(false);
-    } catch (error) { toast.error("Failed to submit report."); }
-    setIsReporting(false);
-  };
-
-  const handleBlockUser = async () => {
-    if (!currentUser) { toast.error("Please log in to block users."); return; }
-    if (!confirm(`Block ${seller?.full_name || 'this user'}?`)) return;
-    setIsBlocking(true);
-    try {
-      const blockedList = JSON.parse(localStorage.getItem('blockedUsers') || '[]');
-      if (!blockedList.includes(listing.user_id)) {
-        blockedList.push(listing.user_id);
-        localStorage.setItem('blockedUsers', JSON.stringify(blockedList));
-      }
-      toast.success("🚫 User blocked.");
-      router.push("/marketplace");
-    } catch (error) { toast.error("Failed to block user."); }
-    setIsBlocking(false);
   };
 
   if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><p>Loading...</p></main>;
@@ -236,13 +302,14 @@ export default function ClientPage() {
         <div className="grid md:grid-cols-2 gap-12">
           <div className="space-y-4">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden aspect-square flex items-center justify-center relative">
+              {/* 🆕 LIVE AUCTION BADGE */}
               {isAuctionActive && (
                 <div className="absolute top-4 left-4 z-10 bg-red-600/90 backdrop-blur-md px-4 py-2 rounded-full border border-red-400 flex items-center gap-2 animate-pulse">
                   <span className="w-2 h-2 bg-white rounded-full"></span>
                   <span className="text-sm font-bold text-white">LIVE AUCTION • Ends in {timeLeft}</span>
                 </div>
               )}
-              {selectedImage ? <img src={selectedImage} alt={listing.product_name} className="w-full h-full object-contain" /> : <div className="text-gray-600 text-xl">No Image</div>}
+              {selectedImage ? <img src={selectedImage} alt={listing.product_name} className="w-full h-full object-contain" /> : <div className="text-gray-600 text-xl">No Image Available</div>}
             </div>
             {listing.image_urls && listing.image_urls.length > 1 && (
               <div className="grid grid-cols-5 gap-3">
@@ -258,10 +325,16 @@ export default function ClientPage() {
             <div className="mb-2 text-sm text-purple-400 font-bold uppercase tracking-wider">{listing.condition || 'Used'} • {listing.status}</div>
             <h1 className="text-4xl font-bold mb-4 text-white">{listing.product_name}</h1>
             
+            {/* 🆕 AUCTION PRICING DISPLAY */}
             {listing.is_auction ? (
               <div className="mb-6 p-4 bg-gray-900 rounded-xl border border-purple-500/30">
                 <div className="text-sm text-gray-400 mb-1">Current Highest Bid</div>
                 <div className="text-4xl font-bold text-purple-400 mb-2">{currencySymbol}{listing.current_bid || listing.starting_bid}</div>
+                {isAuctionActive && (
+                  <div className="text-sm text-gray-300">
+                    Next minimum bid: <span className="font-bold text-white">{currencySymbol}{(listing.current_bid || listing.starting_bid) + 1}</span>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-3xl font-bold text-blue-400 mb-6">{currencySymbol}{listing.sale_price}</div>
@@ -271,7 +344,6 @@ export default function ClientPage() {
               <h3 className="text-xl font-bold mb-2 text-white">Description</h3>
               <p className="text-gray-300 whitespace-pre-wrap">{listing.ai_description || listing.description || "No description provided."}</p>
             </div>
-            
             {seller && (
               <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 mb-6">
                 <h3 className="text-sm font-bold text-gray-400 uppercase mb-3">Sold by</h3>
@@ -280,31 +352,68 @@ export default function ClientPage() {
                   <div className="flex-1">
                     <Link href={`/profile/${seller.id}`} className="font-bold text-white text-lg hover:text-blue-400 transition-colors inline-flex items-center gap-1 group">
                       {seller.full_name || "Anonymous Seller"}
+                      {/* 🆕 VERIFIED BADGE */}
                       {seller.is_verified && <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full border border-green-500/30">✅ Verified</span>}
+                      <span className="text-xs text-gray-500 font-normal opacity-0 group-hover:opacity-100 transition-opacity">View Profile →</span>
                     </Link>
                     <p className="text-sm text-gray-500">Location: {seller.country || "Unknown"} • Member since {new Date(seller.created_at).getFullYear()}</p>
                     {sellerRating.count > 0 ? (
                       <div className="flex items-center gap-2 mt-1">
                         <div className="flex text-sm">{renderStars(sellerRating.average)}</div>
-                        <span className="text-xs text-gray-400">{sellerRating.average.toFixed(1)} ({sellerRating.count} reviews)</span>
+                        <span className="text-xs text-gray-400">{sellerRating.average.toFixed(1)} ({sellerRating.count} {sellerRating.count === 1 ? 'review' : 'reviews'})</span>
                       </div>
                     ) : <p className="text-xs text-gray-500 mt-1">No reviews yet</p>}
                   </div>
                 </div>
               </div>
             )}
-
-            {/* 🆕 ACTION BUTTONS (Hold vs Standard) */}
+            {reviews.length > 0 && (
+              <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 mb-6">
+                <h3 className="text-sm font-bold text-gray-400 uppercase mb-4">Customer Reviews</h3>
+                <div className="space-y-4">
+                  {reviews.map((review, index) => (
+                    <div key={index} className="border-b border-gray-800 pb-4 last:border-0 last:pb-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex text-sm">{renderStars(review.rating)}</div>
+                        <span className="text-xs text-gray-500">{new Date(review.created_at).toLocaleDateString()}</span>
+                      </div>
+                      <p className="text-sm text-gray-300">{review.comment || "No comment provided."}</p>
+                      <p className="text-xs text-gray-500 mt-1">- Verified Buyer</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* 🆕 ACTION BUTTONS (Auction vs Standard + INJECTED HOLD LOGIC) */}
             <div className="flex flex-wrap gap-4 mt-auto">
-              {listing.is_auction ? (
-                isAuctionActive && currentUser && userCountry === seller?.country ? (
-                  <div className="flex-1 min-w-[200px] flex gap-2">
-                    <input type="number" value={customBidAmount} onChange={(e) => setCustomBidAmount(e.target.value)} placeholder={`Min: ${(listing.current_bid || listing.starting_bid) + 1}`} className="flex-1 p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500" />
-                    <button onClick={handlePlaceBid} disabled={isBidding} className="px-6 py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition">🔨 Place Bid</button>
-                  </div>
-                ) : null
+              {isAuctionActive ? (
+                <>
+                  {currentUser && userCountry === seller?.country ? (
+                    <div className="flex-1 min-w-[200px] flex gap-2">
+                      <input 
+                        type="number" 
+                        value={customBidAmount} 
+                        onChange={(e) => setCustomBidAmount(e.target.value)}
+                        placeholder={`Min: ${(listing.current_bid || listing.starting_bid) + 1}`}
+                        className="flex-1 p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500"
+                      />
+                      <button 
+                        onClick={handlePlaceBid} 
+                        disabled={isBidding}
+                        className="px-6 py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition flex items-center justify-center gap-2"
+                      >
+                        {isBidding ? "..." : " Place Bid"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex-1 min-w-[200px] p-4 bg-red-900/20 border border-red-500/30 text-red-400 font-bold rounded-xl text-sm text-center flex items-center justify-center gap-2">
+                       Bidding restricted to local buyers ({seller?.country}) for safety.
+                    </div>
+                  )}
+                </>
               ) : (
-                // STANDARD LISTING HOLD LOGIC
+                // STANDARD LISTING BUTTONS WITH INJECTED HOLD LOGIC
                 <>
                   {listing.is_reserved && listing.reserved_by !== currentUser?.id ? (
                     <div className="flex-1 min-w-[200px] p-4 bg-gray-800 text-gray-400 font-bold rounded-xl text-lg text-center border border-gray-700 flex items-center justify-center gap-2">
@@ -332,27 +441,38 @@ export default function ClientPage() {
               )}
 
               {currentUser && currentUser.id !== listing.user_id && (
-                <button onClick={handleToggleSave} disabled={saving} className={`px-6 py-4 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2 ${isSaved ? 'bg-red-900/30 text-red-400' : 'bg-gray-800 hover:bg-gray-700 text-white'}`}>
+                <button onClick={handleToggleSave} disabled={saving} className={`px-6 py-4 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2 ${isSaved ? 'bg-red-900/30 text-red-400 hover:bg-red-900/50 border-red-500/50' : 'bg-gray-800 hover:bg-gray-700 text-white'}`}>
                   {saving ? "..." : (isSaved ? "❤️ Saved" : "🤍 Save")}
                 </button>
               )}
               {currentUser && currentUser.id !== listing.user_id && (
                 <>
-                  <button onClick={() => setShowReviewModal(true)} className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-green-400 font-bold rounded-xl transition border border-gray-700">⭐ Review</button>
-                  <button onClick={() => setShowReportModal(true)} className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-yellow-400 font-bold rounded-xl transition border border-gray-700">🚩 Report</button>
-                  <button onClick={handleBlockUser} disabled={isBlocking} className="px-6 py-4 bg-gray-800 hover:bg-red-900/50 text-red-400 font-bold rounded-xl transition border border-gray-700">{isBlocking ? "..." : "🚫 Block"}</button>
+                  <button onClick={() => setShowReviewModal(true)} className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-green-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2">⭐ Leave a Review</button>
+                  <button onClick={() => setShowReportModal(true)} className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-yellow-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2">🚩 Report</button>
+                  <button onClick={handleBlockUser} disabled={isBlocking} className="px-6 py-4 bg-gray-800 hover:bg-red-900/50 text-red-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2">{isBlocking ? "..." : " Block"}</button>
                 </>
               )}
             </div>
+            
+            {/* 🛡️ SAFETY WARNING FOR AUCTIONS */}
+            {listing.is_auction && (
+              <div className="mt-6 p-4 bg-yellow-900/20 border border-yellow-500/30 rounded-xl flex items-start gap-3">
+                <span className="text-xl">️</span>
+                <div>
+                  <h4 className="font-bold text-yellow-400 text-sm mb-1">Safety First</h4>
+                  <p className="text-xs text-gray-400">Margin does not process payments. For high-value auction wins, we strongly recommend Local Pickup in a safe, public place. Never send money via wire transfer or gift cards.</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Modals (Review & Report) remain exactly as they were in your original code */}
       {showReviewModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold mb-4 text-white">Leave a Review</h3>
+            <p className="text-gray-400 mb-6 text-sm">How was your experience with this seller?</p>
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-400 mb-2">Rating</label>
               <div className="flex gap-2">
@@ -377,6 +497,7 @@ export default function ClientPage() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-xl font-bold mb-4 text-white">Report Listing</h3>
+            <p className="text-gray-400 mb-6 text-sm">Why are you reporting this item?</p>
             <select value={reportReason} onChange={(e) => setReportReason(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 mb-6">
               <option value="Spam">Spam or Misleading</option>
               <option value="Scam">Suspected Scam</option>
