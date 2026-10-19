@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import toast from "react-hot-toast";
 
-// THE GLOBAL CURRENCY MAP (100+ Countries)
+// THE GLOBAL CURRENCY MAP (100+ Countries - UNTOUCHED)
 const currencyMap: Record<string, { symbol: string; code: string }> = {
   "USA": { symbol: "$", code: "USD" }, "United States": { symbol: "$", code: "USD" },
   "UK": { symbol: "£", code: "GBP" }, "United Kingdom": { symbol: "£", code: "GBP" },
@@ -134,7 +134,7 @@ export default function GeneratePage() {
   const [shippingPolicy, setShippingPolicy] = useState("local_pickup");
   const [userPlan, setUserPlan] = useState("free");
 
-  // 🆕 STRUCTURED DATA & 99.99% ACCURATE GAUGE STATES
+  // 🧠 STRUCTURED DATA & 99.99% ACCURATE GAUGE STATES
   const [category, setCategory] = useState("");
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
@@ -171,7 +171,6 @@ export default function GeneratePage() {
     }
 
     const fetchMarketData = async () => {
-      // 1. Try exact match first (Brand + Model + Specs + Condition)
       let { data: exactData } = await supabase
         .from("listings")
         .select("sale_price, status, created_at")
@@ -181,7 +180,6 @@ export default function GeneratePage() {
         .eq("condition", condition)
         .in("status", ["Active", "Sold"]);
 
-      // 2. Smart Fallback: Broaden search if exact match has < 3 results
       let finalData = exactData;
       let matchType = "Exact Matches";
       
@@ -200,7 +198,6 @@ export default function GeneratePage() {
       }
 
       if (finalData && finalData.length > 0) {
-        // Filter out extreme outliers (prices < 20% or > 300% of the median)
         const prices = finalData.map(d => d.sale_price).sort((a, b) => a - b);
         const mid = Math.floor(prices.length / 2);
         const median = prices.length % 2 !== 0 ? prices[mid] : (prices[mid - 1] + prices[mid]) / 2;
@@ -209,14 +206,9 @@ export default function GeneratePage() {
         let totalWeight = 0;
 
         finalData.forEach(item => {
-          // Ignore outliers
           if (item.sale_price < median * 0.2 || item.sale_price > median * 3.0) return;
-          
-          // Recency Check: Only use data from the last 6 months (approx 180 days)
           const isRecent = new Date(item.created_at) > new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
           if (!isRecent) return;
-
-          // Weight "Sold" items 2.5x heavier than "Active" items
           const weight = item.status === "Sold" ? 2.5 : 1;
           weightedSum += item.sale_price * weight;
           totalWeight += weight;
@@ -230,14 +222,13 @@ export default function GeneratePage() {
         } else if (ratio < 0.8) {
           setPriceGauge({ status: `Great Deal 🔵 (Will sell fast! Based on ${matchType})`, color: "text-blue-400", avg: weightedAvg, median });
         } else {
-          setPriceGauge({ status: `Fair Price 🟢 (High chance of selling. Based on ${matchType})`, color: "text-green-400", avg: weightedAvg, median });
+          setPriceGauge({ status: `Fair Price  (High chance of selling. Based on ${matchType})`, color: "text-green-400", avg: weightedAvg, median });
         }
       } else {
         setPriceGauge({ status: "You're setting the market! No recent matches found.", color: "text-gray-400", avg: 0, median: 0 });
       }
     };
 
-    // Debounce the query so it doesn't spam the database while typing
     const timeout = setTimeout(fetchMarketData, 800);
     return () => clearTimeout(timeout);
   }, [brand, model, storage, condition, salePrice, listingType]);
@@ -392,7 +383,6 @@ export default function GeneratePage() {
         shipping_policy: listingType === 'auction' ? shippingPolicy : 'domestic',
         has_video_proof: !!videoUrl,
         video_url: videoUrl,
-        // 🆕 SAVE STRUCTURED DATA FOR GAUGE ACCURACY
         category: category,
         brand: brand,
         model: model,
@@ -403,7 +393,7 @@ export default function GeneratePage() {
         toast.error("Error saving listing: " + dbError.message); 
       } else { 
         if (isPublic) {
-          toast.success(listingType === 'auction' ? "🔴 Live Auction Published!" : "🌍 Published to Public Marketplace!");
+          toast.success(listingType === 'auction' ? " Live Auction Published!" : "🌍 Published to Public Marketplace!");
         } else {
           toast.success("💾 Saved to Drafts successfully!");
         }
@@ -419,22 +409,24 @@ export default function GeneratePage() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white p-8">
-      <div className="max-w-2xl mx-auto">
-        <Link href="/my-listings" className="mb-8 text-gray-400 hover:text-white flex items-center gap-2 w-fit">← Back</Link>
-        <h1 className="text-3xl font-bold mb-2 text-blue-500">Create New Listing</h1>
-        <p className="text-gray-400 mb-8">List your product in <span className="text-white font-bold">{currency.code}</span> ({currency.symbol}).</p>
+    // 📱 MOBILE POLISH: Changed p-8 to p-4 md:p-8 for better mobile spacing
+    <main className="min-h-screen bg-gray-950 text-white p-4 md:p-8">
+      <div className="max-w-3xl mx-auto">
+        <Link href="/my-listings" className="mb-6 md:mb-8 text-gray-400 hover:text-white flex items-center gap-2 w-fit text-sm md:text-base">← Back</Link>
+        <h1 className="text-2xl md:text-3xl font-bold mb-2 text-blue-500">Create New Listing</h1>
+        <p className="text-gray-400 mb-6 md:mb-8 text-sm md:text-base">List your product in <span className="text-white font-bold">{currency.code}</span> ({currency.symbol}).</p>
 
-        <form onSubmit={handleSubmit} className="space-y-6 bg-gray-900 p-8 rounded-2xl border border-gray-800">
+        {/* 📱 MOBILE POLISH: Changed p-8 to p-4 md:p-8 */}
+        <form onSubmit={handleSubmit} className="space-y-6 bg-gray-900 p-4 md:p-8 rounded-2xl border border-gray-800">
           
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-2">Listing Type</label>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <button type="button" onClick={() => setListingType('fixed')} className={`p-4 rounded-xl border text-left transition ${listingType === 'fixed' ? 'bg-blue-600/20 border-blue-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
                 <div className="font-bold text-lg">Fixed Price</div>
                 <div className="text-sm opacity-80">Standard listing with a set price.</div>
               </button>
-              <button type="button" onClick={() => { if (userPlan === 'free') { toast.error("🔒 Live Auctions are a Pro feature! Upgrade to unlock."); router.push("/pricing"); } else { setListingType('auction'); } }} className={`p-4 rounded-xl border text-left transition relative ${listingType === 'auction' ? 'bg-purple-600/20 border-purple-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
+              <button type="button" onClick={() => { if (userPlan === 'free') { toast.error(" Live Auctions are a Pro feature! Upgrade to unlock."); router.push("/pricing"); } else { setListingType('auction'); } }} className={`p-4 rounded-xl border text-left transition relative ${listingType === 'auction' ? 'bg-purple-600/20 border-purple-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
                 {userPlan === 'free' && (<div className="absolute top-2 right-2 bg-yellow-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full">PRO</div>)}
                 <div className="font-bold text-lg flex items-center gap-2">🔴 Live Auction <span className="text-xs bg-purple-500/30 px-2 py-0.5 rounded">Pro</span></div>
                 <div className="text-sm opacity-80">Let buyers bid and drive up the price.</div>
@@ -451,7 +443,8 @@ export default function GeneratePage() {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="grid grid-cols-3 gap-4">
+                {/* 📱 MOBILE POLISH: Changed grid to stack better on small screens */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {imagePreviews.map((preview, index) => (
                     <div key={index} className="relative w-full h-32 bg-black rounded-xl overflow-hidden border border-gray-700">
                       <img src={preview} alt={`Preview ${index}`} className="w-full h-full object-contain" />
@@ -490,14 +483,15 @@ export default function GeneratePage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-2">Product Title (Required)</label>
-            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg" placeholder="e.g. iPhone 13 Pro Max" />
+            {/* 🛡️ EDGE CASE: Added text-base to prevent iOS auto-zoom on focus */}
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-blue-500" placeholder="e.g. iPhone 13 Pro Max" />
           </div>
 
           {/* 🧠 STRUCTURED DATA FOR 99.99% ACCURACY */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-2">Category</label>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500">
+              <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-blue-500">
                 <option value="">Select Category</option>
                 <option value="Electronics">Electronics</option>
                 <option value="Vehicles">Vehicles</option>
@@ -510,15 +504,15 @@ export default function GeneratePage() {
               <>
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-2">Brand / Make</label>
-                  <input type="text" value={brand} onChange={(e) => setBrand(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500" placeholder={`e.g. ${category === 'Vehicles' ? 'Toyota' : 'Apple'}`} />
+                  <input type="text" value={brand} onChange={(e) => setBrand(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-blue-500" placeholder={`e.g. ${category === 'Vehicles' ? 'Toyota' : 'Apple'}`} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-2">Model</label>
-                  <input type="text" value={model} onChange={(e) => setModel(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500" placeholder={`e.g. ${category === 'Vehicles' ? 'Camry' : 'iPhone 13'}`} />
+                  <input type="text" value={model} onChange={(e) => setModel(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-blue-500" placeholder={`e.g. ${category === 'Vehicles' ? 'Camry' : 'iPhone 13'}`} />
                 </div>
                 <div className="md:col-span-3">
                   <label className="block text-sm font-medium text-gray-400 mb-2">Key Specs (Storage, Year, etc.)</label>
-                  <input type="text" value={storage} onChange={(e) => setStorage(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500" placeholder={`e.g. ${category === 'Vehicles' ? '2020, 50k miles' : '128GB'}`} />
+                  <input type="text" value={storage} onChange={(e) => setStorage(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-blue-500" placeholder={`e.g. ${category === 'Vehicles' ? '2020, 50k miles' : '128GB'}`} />
                 </div>
               </>
             )}
@@ -528,21 +522,22 @@ export default function GeneratePage() {
             {listingType === 'auction' ? (
               <div className="md:col-span-3">
                 <label className="block text-sm font-medium text-gray-400 mb-2">Starting Bid ({currency.symbol}) *</label>
-                <input type="number" value={startingBid} onChange={(e) => setStartingBid(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 text-lg" placeholder="0.00" />
+                {/* 🛡️ EDGE CASE: Added min="0" to prevent negative prices */}
+                <input type="number" min="0" value={startingBid} onChange={(e) => setStartingBid(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-purple-500" placeholder="0.00" />
               </div>
             ) : (
               <>
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-2">Sale Price ({currency.symbol}) *</label>
-                  <input type="number" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg" placeholder="0.00" />
+                  <input type="number" min="0" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-blue-500" placeholder="0.00" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-2">Cost Price ({currency.symbol})</label>
-                  <input type="number" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-green-500 text-lg" placeholder="0.00" />
+                  <input type="number" min="0" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-green-500" placeholder="0.00" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-2">Status</label>
-                  <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg">
+                  <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-blue-500">
                     <option value="Available">Available</option><option value="Sold">Sold</option><option value="Pending">Pending</option>
                   </select>
                 </div>
@@ -569,12 +564,12 @@ export default function GeneratePage() {
           )}
 
           {listingType === 'auction' && userPlan === 'pro' && (
-            <div className="p-6 bg-purple-900/10 border border-purple-500/30 rounded-xl space-y-4">
+            <div className="p-4 md:p-6 bg-purple-900/10 border border-purple-500/30 rounded-xl space-y-4">
               <h3 className="text-lg font-bold text-purple-400 flex items-center gap-2">🔴 Auction Settings</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-2">Auction Duration</label>
-                  <select value={auctionDuration} onChange={(e) => setAuctionDuration(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 text-lg">
+                  <select value={auctionDuration} onChange={(e) => setAuctionDuration(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-purple-500">
                     <option value="24h">24 Hours</option>
                     <option value="3d">3 Days</option>
                     <option value="7d">7 Days</option>
@@ -582,12 +577,12 @@ export default function GeneratePage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-2">Shipping Policy 🛡️</label>
-                  <select value={shippingPolicy} onChange={(e) => setShippingPolicy(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500 text-lg">
+                  <select value={shippingPolicy} onChange={(e) => setShippingPolicy(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-purple-500">
                     <option value="local_pickup">📍 Local Pickup Only (Safest)</option>
-                    <option value="domestic">🇺🇸 Domestic Shipping Only</option>
+                    <option value="domestic">🇺 Domestic Shipping Only</option>
                     <option value="worldwide">🌍 Worldwide Shipping</option>
                   </select>
-                  <p className="text-xs text-gray-500 mt-2">⚠️ For high-value auctions, Local Pickup is highly recommended to prevent fraud.</p>
+                  <p className="text-xs text-gray-500 mt-2">️ For high-value auctions, Local Pickup is highly recommended to prevent fraud.</p>
                 </div>
               </div>
             </div>
@@ -595,14 +590,14 @@ export default function GeneratePage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-2">Condition</label>
-            <select value={condition} onChange={(e) => setCondition(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg">
+            <select value={condition} onChange={(e) => setCondition(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-blue-500">
               <option value="New">Brand New</option><option value="Used - Like New">Used - Like New</option><option value="Used - Good">Used - Good</option><option value="Used - Fair">Used - Fair</option>
             </select>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-2">Description</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-lg" placeholder="Describe your product..." />
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-blue-500 resize-none" placeholder="Describe your product..." />
           </div>
 
           <div className="flex items-center gap-3 p-4 bg-purple-900/20 border border-purple-500/30 rounded-xl">
@@ -611,7 +606,7 @@ export default function GeneratePage() {
           </div>
 
           <button type="submit" disabled={loading} className="w-full p-4 bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold rounded-xl transition disabled:opacity-50 flex justify-center items-center gap-2">
-            {loading ? (<><span className="animate-spin">⚙️</span> Processing...</>) : (<>{isPublic ? (listingType === 'auction' ? "🔴 Publish Live Auction" : "🌍 Publish to Marketplace") : "💾 Save to Drafts"}</>)}
+            {loading ? (<><span className="animate-spin">⚙️</span> Processing...</>) : (<>{isPublic ? (listingType === 'auction' ? "🔴 Publish Live Auction" : " Publish to Marketplace") : "💾 Save to Drafts"}</>)}
           </button>
         </form>
       </div>
