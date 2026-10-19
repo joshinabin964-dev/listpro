@@ -1,11 +1,11 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import LocationSetup from "@/components/LocationSetup";
 
-// THE GLOBAL CURRENCY MAP
+// THE GLOBAL CURRENCY MAP (Preserved exactly as provided)
 const currencyMap: Record<string, { symbol: string; code: string }> = {
   "Nepal": { symbol: "Rs.", code: "NPR" }, "India": { symbol: "₹", code: "INR" },
   "Pakistan": { symbol: "Rs.", code: "PKR" }, "Bangladesh": { symbol: "৳", code: "BDT" },
@@ -49,6 +49,12 @@ export default function DashboardPage() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
+  
+  // 🛡️ EDGE CASE: Prevent double-clicks and handle click-outside
+  const [processingNotif, setProcessingNotif] = useState<string | null>(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+  
   const router = useRouter();
 
   // 🔄 Extracted fetch logic so it can be called on mount AND on update
@@ -100,14 +106,32 @@ export default function DashboardPage() {
     };
   }, [fetchData]);
 
+  // 🛡️ EDGE CASE: Close notification dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    if (showNotifications) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showNotifications]);
+
   const handleLogout = async () => {
+    setIsLoggingOut(true);
     await supabase.auth.signOut();
     router.push("/login");
   };
 
   const markAsRead = async (id: string) => {
+    setProcessingNotif(id);
     await supabase.from("notifications").update({ is_read: true }).eq("id", id);
     setNotifications(prev => prev.filter(n => n.id !== id));
+    setProcessingNotif(null);
   };
 
   if (loading) return (
@@ -128,7 +152,7 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
           <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Margin</h1>
           <div className="flex items-center gap-2 md:gap-4">
-            <div className="relative">
+            <div className="relative" ref={notifRef}>
               <button onClick={() => setShowNotifications(!showNotifications)} className="px-3 py-2 md:px-4 md:py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition flex items-center gap-1 md:gap-2 relative">
                 <span>🔔</span>
                 <span className="hidden sm:inline">Notifications</span>
@@ -139,7 +163,8 @@ export default function DashboardPage() {
                 )}
               </button>
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+                // 📱 MOBILE POLISH: Added max-w-[calc(100vw-2rem)] to prevent off-screen clipping on small phones
+                <div className="absolute right-0 mt-2 w-72 sm:w-80 max-w-[calc(100vw-2rem)] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
                   <div className="p-3 border-b border-gray-800 bg-gray-800/50">
                     <h3 className="font-bold text-sm text-white">Recent Activity</h3>
                   </div>
@@ -153,7 +178,13 @@ export default function DashboardPage() {
                             <p className="text-sm text-gray-200">{notif.content}</p>
                             <p className="text-xs text-gray-500 mt-1">{new Date(notif.created_at).toLocaleDateString()}</p>
                           </div>
-                          <button onClick={() => markAsRead(notif.id)} className="text-xs text-blue-400 hover:text-blue-300 font-bold whitespace-nowrap">Mark read</button>
+                          <button 
+                            onClick={() => markAsRead(notif.id)} 
+                            disabled={processingNotif === notif.id}
+                            className="text-xs text-blue-400 hover:text-blue-300 font-bold whitespace-nowrap disabled:opacity-50"
+                          >
+                            {processingNotif === notif.id ? "..." : "Mark read"}
+                          </button>
                         </div>
                       ))
                     )}
@@ -169,7 +200,13 @@ export default function DashboardPage() {
                 {plan === 'pro' ? '⭐ Pro' : 'Upgrade'}
               </button>
             </Link>
-            <button onClick={handleLogout} className="px-3 py-2 md:px-4 md:py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition">Sign Out</button>
+            <button 
+              onClick={handleLogout} 
+              disabled={isLoggingOut}
+              className="px-3 py-2 md:px-4 md:py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition disabled:opacity-50"
+            >
+              {isLoggingOut ? "Signing out..." : "Sign Out"}
+            </button>
           </div>
         </div>
       </nav>
@@ -212,6 +249,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* 📱 MOBILE POLISH: Added sm:col-span-2 md:col-span-1 to the last item so it centers nicely on tablet screens */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
           <Link href="/generate" className="block">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-blue-500 transition cursor-pointer group">
@@ -255,7 +293,7 @@ export default function DashboardPage() {
               <p className="text-sm md:text-base text-gray-400">Update your name and seller details.</p>
             </div>
           </Link>
-          <Link href="/optimizer" className="block">
+          <Link href="/optimizer" className="block sm:col-span-2 md:col-span-1">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-cyan-500 transition cursor-pointer group">
               <span className="text-3xl md:text-4xl mb-3 md:mb-4 block">⚡</span>
               <h3 className="text-xl md:text-2xl font-bold mb-2 group-hover:text-cyan-400 transition">Bulk Optimizer</h3>
