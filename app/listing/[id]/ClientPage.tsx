@@ -31,7 +31,7 @@ export default function ClientPage() {
   const [isReporting, setIsReporting] = useState(false);
   const [isBlocking, setIsBlocking] = useState(false);
 
-  // 🆕 INJECTED: 24-HOUR HOLD STATES
+  //  INJECTED: 24-HOUR HOLD STATES
   const [holdRequest, setHoldRequest] = useState<any>(null);
   const [isRequestingHold, setIsRequestingHold] = useState(false);
 
@@ -157,7 +157,7 @@ export default function ClientPage() {
   const handlePlaceBid = async () => {
     if (!currentUser) { toast.error("Please log in to bid."); router.push("/login"); return; }
     
-    // 🛡️ SAFETY NET: Country Check
+    // ️ SAFETY NET: Country Check
     if (userCountry !== seller?.country) {
       toast.error(`🚫 Bidding is restricted to local buyers (${seller?.country}). This protects you from international shipping scams.`);
       return;
@@ -256,7 +256,7 @@ export default function ClientPage() {
     setIsBlocking(false);
   };
 
-  // 🆕 INJECTED: HANDLE REQUEST HOLD
+  //  INJECTED: HANDLE REQUEST HOLD
   const handleRequestHold = async () => {
     if (!currentUser) { toast.error("Please log in to request a hold."); router.push("/login"); return; }
     setIsRequestingHold(true);
@@ -291,45 +291,51 @@ export default function ClientPage() {
   const isAuctionActive = listing.is_auction && timeLeft !== "Auction Ended";
 
   return (
+    // 📱 MOBILE POLISH: Adjusted main container padding
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link href="/marketplace"><h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Margin</h1></Link>
-          <Link href="/marketplace"><button className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition">Back to Marketplace</button></Link>
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
+          <Link href="/marketplace"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Margin</h1></Link>
+          <Link href="/marketplace"><button className="px-3 md:px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition">Back</button></Link>
         </div>
       </nav>
-      <div className="max-w-6xl mx-auto px-6 py-12">
-        <div className="grid md:grid-cols-2 gap-12">
+      
+      {/* 📱 MOBILE POLISH: Adjusted padding and gap */}
+      <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-12">
+        <div className="grid md:grid-cols-2 gap-8 md:gap-12">
           <div className="space-y-4">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden aspect-square flex items-center justify-center relative">
               {/* 🆕 LIVE AUCTION BADGE */}
               {isAuctionActive && (
-                <div className="absolute top-4 left-4 z-10 bg-red-600/90 backdrop-blur-md px-4 py-2 rounded-full border border-red-400 flex items-center gap-2 animate-pulse">
+                <div className="absolute top-4 left-4 z-10 bg-red-600/90 backdrop-blur-md px-3 py-1.5 md:px-4 md:py-2 rounded-full border border-red-400 flex items-center gap-2 animate-pulse">
                   <span className="w-2 h-2 bg-white rounded-full"></span>
-                  <span className="text-sm font-bold text-white">LIVE AUCTION • Ends in {timeLeft}</span>
+                  <span className="text-xs md:text-sm font-bold text-white">LIVE • {timeLeft}</span>
                 </div>
               )}
               {selectedImage ? <img src={selectedImage} alt={listing.product_name} className="w-full h-full object-contain" /> : <div className="text-gray-600 text-xl">No Image Available</div>}
             </div>
             {listing.image_urls && listing.image_urls.length > 1 && (
-              <div className="grid grid-cols-5 gap-3">
+              //  MOBILE POLISH: Adjusted grid for thumbnails
+              <div className="grid grid-cols-5 gap-2 md:gap-3">
                 {listing.image_urls.map((url: string, index: number) => (
-                  <button key={index} onClick={() => setSelectedImage(url)} className={`aspect-square rounded-xl overflow-hidden border-2 transition ${selectedImage === url ? 'border-blue-500' : 'border-gray-800 hover:border-gray-600'}`}>
+                  <button key={index} onClick={() => setSelectedImage(url)} className={`aspect-square rounded-lg md:rounded-xl overflow-hidden border-2 transition ${selectedImage === url ? 'border-blue-500' : 'border-gray-800 hover:border-gray-600'}`}>
                     <img src={url} alt={`Thumbnail ${index}`} className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>
             )}
           </div>
+          
           <div className="flex flex-col">
-            <div className="mb-2 text-sm text-purple-400 font-bold uppercase tracking-wider">{listing.condition || 'Used'} • {listing.status}</div>
-            <h1 className="text-4xl font-bold mb-4 text-white">{listing.product_name}</h1>
+            {/* 📱 MOBILE POLISH: Adjusted text sizes */}
+            <div className="mb-2 text-xs md:text-sm text-purple-400 font-bold uppercase tracking-wider">{listing.condition || 'Used'} • {listing.status}</div>
+            <h1 className="text-2xl md:text-4xl font-bold mb-2 md:mb-4 text-white break-words">{listing.product_name}</h1>
             
             {/* 🆕 AUCTION PRICING DISPLAY */}
             {listing.is_auction ? (
-              <div className="mb-6 p-4 bg-gray-900 rounded-xl border border-purple-500/30">
+              <div className="mb-4 md:mb-6 p-4 bg-gray-900 rounded-xl border border-purple-500/30">
                 <div className="text-sm text-gray-400 mb-1">Current Highest Bid</div>
-                <div className="text-4xl font-bold text-purple-400 mb-2">{currencySymbol}{listing.current_bid || listing.starting_bid}</div>
+                <div className="text-3xl md:text-4xl font-bold text-purple-400 mb-2">{currencySymbol}{listing.current_bid || listing.starting_bid}</div>
                 {isAuctionActive && (
                   <div className="text-sm text-gray-300">
                     Next minimum bid: <span className="font-bold text-white">{currencySymbol}{(listing.current_bid || listing.starting_bid) + 1}</span>
@@ -337,26 +343,28 @@ export default function ClientPage() {
                 )}
               </div>
             ) : (
-              <div className="text-3xl font-bold text-blue-400 mb-6">{currencySymbol}{listing.sale_price}</div>
+              <div className="text-2xl md:text-3xl font-bold text-blue-400 mb-4 md:mb-6">{currencySymbol}{listing.sale_price}</div>
             )}
 
-            <div className="prose prose-invert mb-8">
-              <h3 className="text-xl font-bold mb-2 text-white">Description</h3>
-              <p className="text-gray-300 whitespace-pre-wrap">{listing.ai_description || listing.description || "No description provided."}</p>
+            <div className="prose prose-invert mb-6 md:mb-8">
+              <h3 className="text-lg md:text-xl font-bold mb-2 text-white">Description</h3>
+              <p className="text-gray-300 whitespace-pre-wrap text-sm md:text-base">{listing.ai_description || listing.description || "No description provided."}</p>
             </div>
+            
             {seller && (
-              <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 mb-6">
-                <h3 className="text-sm font-bold text-gray-400 uppercase mb-3">Sold by</h3>
+              // 📱 MOBILE POLISH: Adjusted padding
+              <div className="bg-gray-900 p-4 md:p-6 rounded-2xl border border-gray-800 mb-4 md:mb-6">
+                <h3 className="text-xs md:text-sm font-bold text-gray-400 uppercase mb-3">Sold by</h3>
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xl font-bold text-white shrink-0">{seller.full_name?.charAt(0) || "U"}</div>
-                  <div className="flex-1">
-                    <Link href={`/profile/${seller.id}`} className="font-bold text-white text-lg hover:text-blue-400 transition-colors inline-flex items-center gap-1 group">
+                  <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-lg md:text-xl font-bold text-white shrink-0">{seller.full_name?.charAt(0) || "U"}</div>
+                  <div className="flex-1 min-w-0">
+                    <Link href={`/profile/${seller.id}`} className="font-bold text-white text-base md:text-lg hover:text-blue-400 transition-colors inline-flex items-center gap-1 group truncate">
                       {seller.full_name || "Anonymous Seller"}
                       {/* 🆕 VERIFIED BADGE */}
-                      {seller.is_verified && <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full border border-green-500/30">✅ Verified</span>}
-                      <span className="text-xs text-gray-500 font-normal opacity-0 group-hover:opacity-100 transition-opacity">View Profile →</span>
+                      {seller.is_verified && <span className="text-[10px] md:text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full border border-green-500/30 shrink-0">✅ Verified</span>}
+                      <span className="text-xs text-gray-500 font-normal opacity-0 group-hover:opacity-100 transition-opacity hidden md:inline">View Profile →</span>
                     </Link>
-                    <p className="text-sm text-gray-500">Location: {seller.country || "Unknown"} • Member since {new Date(seller.created_at).getFullYear()}</p>
+                    <p className="text-xs md:text-sm text-gray-500 truncate">Location: {seller.country || "Unknown"} • Member since {new Date(seller.created_at).getFullYear()}</p>
                     {sellerRating.count > 0 ? (
                       <div className="flex items-center gap-2 mt-1">
                         <div className="flex text-sm">{renderStars(sellerRating.average)}</div>
@@ -367,9 +375,10 @@ export default function ClientPage() {
                 </div>
               </div>
             )}
+            
             {reviews.length > 0 && (
-              <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 mb-6">
-                <h3 className="text-sm font-bold text-gray-400 uppercase mb-4">Customer Reviews</h3>
+              <div className="bg-gray-900 p-4 md:p-6 rounded-2xl border border-gray-800 mb-4 md:mb-6">
+                <h3 className="text-xs md:text-sm font-bold text-gray-400 uppercase mb-4">Customer Reviews</h3>
                 <div className="space-y-4">
                   {reviews.map((review, index) => (
                     <div key={index} className="border-b border-gray-800 pb-4 last:border-0 last:pb-0">
@@ -385,30 +394,32 @@ export default function ClientPage() {
               </div>
             )}
             
-            {/* 🆕 ACTION BUTTONS (Auction vs Standard + INJECTED HOLD LOGIC) */}
-            <div className="flex flex-wrap gap-4 mt-auto">
+            {/*  ACTION BUTTONS (Auction vs Standard + INJECTED HOLD LOGIC) */}
+            {/* 📱 MOBILE POLISH: Adjusted gap and button sizing */}
+            <div className="flex flex-col sm:flex-row flex-wrap gap-3 md:gap-4 mt-auto">
               {isAuctionActive ? (
                 <>
                   {currentUser && userCountry === seller?.country ? (
-                    <div className="flex-1 min-w-[200px] flex gap-2">
+                    <div className="flex-1 min-w-[200px] flex gap-2 w-full sm:w-auto">
                       <input 
                         type="number" 
                         value={customBidAmount} 
                         onChange={(e) => setCustomBidAmount(e.target.value)}
                         placeholder={`Min: ${(listing.current_bid || listing.starting_bid) + 1}`}
-                        className="flex-1 p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-purple-500"
+                        // 🛡️ EDGE CASE: Added text-base to prevent iOS zoom
+                        className="flex-1 p-3 md:p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-purple-500"
                       />
                       <button 
                         onClick={handlePlaceBid} 
                         disabled={isBidding}
-                        className="px-6 py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition flex items-center justify-center gap-2"
+                        className="px-4 md:px-6 py-3 md:py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 text-sm md:text-base"
                       >
-                        {isBidding ? "..." : " Place Bid"}
+                        {isBidding ? "..." : "🔨 Place Bid"}
                       </button>
                     </div>
                   ) : (
-                    <div className="flex-1 min-w-[200px] p-4 bg-red-900/20 border border-red-500/30 text-red-400 font-bold rounded-xl text-sm text-center flex items-center justify-center gap-2">
-                       Bidding restricted to local buyers ({seller?.country}) for safety.
+                    <div className="flex-1 min-w-[200px] p-3 md:p-4 bg-red-900/20 border border-red-500/30 text-red-400 font-bold rounded-xl text-xs md:text-sm text-center flex items-center justify-center gap-2">
+                       🚫 Bidding restricted to local buyers ({seller?.country}) for safety.
                     </div>
                   )}
                 </>
@@ -416,48 +427,50 @@ export default function ClientPage() {
                 // STANDARD LISTING BUTTONS WITH INJECTED HOLD LOGIC
                 <>
                   {listing.is_reserved && listing.reserved_by !== currentUser?.id ? (
-                    <div className="flex-1 min-w-[200px] p-4 bg-gray-800 text-gray-400 font-bold rounded-xl text-lg text-center border border-gray-700 flex items-center justify-center gap-2">
+                    <div className="flex-1 min-w-[200px] p-3 md:p-4 bg-gray-800 text-gray-400 font-bold rounded-xl text-base md:text-lg text-center border border-gray-700 flex items-center justify-center gap-2">
                       🔒 Reserved by another buyer
                     </div>
                   ) : holdRequest?.status === "pending" ? (
-                    <div className="flex-1 min-w-[200px] p-4 bg-yellow-900/20 text-yellow-400 font-bold rounded-xl text-lg text-center border border-yellow-500/30 flex items-center justify-center gap-2">
-                      ⏳ Hold Request Pending Seller Approval
+                    <div className="flex-1 min-w-[200px] p-3 md:p-4 bg-yellow-900/20 text-yellow-400 font-bold rounded-xl text-base md:text-lg text-center border border-yellow-500/30 flex items-center justify-center gap-2">
+                      ⏳ Hold Request Pending
                     </div>
                   ) : holdRequest?.status === "approved" ? (
-                    <div className="flex-1 min-w-[200px] p-4 bg-green-900/20 text-green-400 font-bold rounded-xl text-lg text-center border border-green-500/30 flex items-center justify-center gap-2">
+                    <div className="flex-1 min-w-[200px] p-3 md:p-4 bg-green-900/20 text-green-400 font-bold rounded-xl text-base md:text-lg text-center border border-green-500/30 flex items-center justify-center gap-2">
                       ✅ Item Reserved for You! (24h)
                     </div>
                   ) : currentUser && currentUser.id !== listing.user_id ? (
                     <div className="flex flex-col sm:flex-row gap-3 w-full">
-                      <Link href={`/chat/${listing.id}?user=${listing.user_id}`} className="flex-1 min-w-[200px] p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-lg flex items-center justify-center gap-2 text-center">💬 Message Seller</Link>
-                      <button onClick={handleRequestHold} disabled={isRequestingHold} className="flex-1 min-w-[200px] p-4 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition text-lg flex items-center justify-center gap-2">
-                        {isRequestingHold ? "..." : "🔒 Request 24h Hold"}
+                      <Link href={`/chat/${listing.id}?user=${listing.user_id}`} className="flex-1 min-w-[200px] p-3 md:p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-base md:text-lg flex items-center justify-center gap-2 text-center">
+                         Message
+                      </Link>
+                      <button onClick={handleRequestHold} disabled={isRequestingHold} className="flex-1 min-w-[200px] p-3 md:p-4 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition text-base md:text-lg flex items-center justify-center gap-2">
+                        {isRequestingHold ? "..." : "🔒 Hold"}
                       </button>
                     </div>
                   ) : (
-                    <div className="flex-1 min-w-[200px] p-4 bg-gray-800 text-gray-400 font-bold rounded-xl text-lg text-center border border-gray-700">{currentUser?.id === listing.user_id ? "This is your listing" : "Log in to message"}</div>
+                    <div className="flex-1 min-w-[200px] p-3 md:p-4 bg-gray-800 text-gray-400 font-bold rounded-xl text-base md:text-lg text-center border border-gray-700">{currentUser?.id === listing.user_id ? "This is your listing" : "Log in to message"}</div>
                   )}
                 </>
               )}
 
               {currentUser && currentUser.id !== listing.user_id && (
-                <button onClick={handleToggleSave} disabled={saving} className={`px-6 py-4 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2 ${isSaved ? 'bg-red-900/30 text-red-400 hover:bg-red-900/50 border-red-500/50' : 'bg-gray-800 hover:bg-gray-700 text-white'}`}>
+                <button onClick={handleToggleSave} disabled={saving} className={`px-4 md:px-6 py-3 md:py-4 font-bold rounded-xl transition border border-gray-700 flex items-center justify-center gap-2 text-sm md:text-base ${isSaved ? 'bg-red-900/30 text-red-400 hover:bg-red-900/50 border-red-500/50' : 'bg-gray-800 hover:bg-gray-700 text-white'}`}>
                   {saving ? "..." : (isSaved ? "❤️ Saved" : "🤍 Save")}
                 </button>
               )}
               {currentUser && currentUser.id !== listing.user_id && (
-                <>
-                  <button onClick={() => setShowReviewModal(true)} className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-green-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2">⭐ Leave a Review</button>
-                  <button onClick={() => setShowReportModal(true)} className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-yellow-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2">🚩 Report</button>
-                  <button onClick={handleBlockUser} disabled={isBlocking} className="px-6 py-4 bg-gray-800 hover:bg-red-900/50 text-red-400 font-bold rounded-xl transition border border-gray-700 flex items-center gap-2">{isBlocking ? "..." : " Block"}</button>
-                </>
+                <div className="flex flex-wrap gap-2 md:gap-3 w-full sm:w-auto">
+                  <button onClick={() => setShowReviewModal(true)} className="flex-1 sm:flex-none px-4 md:px-6 py-3 md:py-4 bg-gray-800 hover:bg-gray-700 text-green-400 font-bold rounded-xl transition border border-gray-700 flex items-center justify-center gap-2 text-sm md:text-base">⭐ Review</button>
+                  <button onClick={() => setShowReportModal(true)} className="flex-1 sm:flex-none px-4 md:px-6 py-3 md:py-4 bg-gray-800 hover:bg-gray-700 text-yellow-400 font-bold rounded-xl transition border border-gray-700 flex items-center justify-center gap-2 text-sm md:text-base">🚩 Report</button>
+                  <button onClick={handleBlockUser} disabled={isBlocking} className="flex-1 sm:flex-none px-4 md:px-6 py-3 md:py-4 bg-gray-800 hover:bg-red-900/50 text-red-400 font-bold rounded-xl transition border border-gray-700 flex items-center justify-center gap-2 text-sm md:text-base">{isBlocking ? "..." : "🚫 Block"}</button>
+                </div>
               )}
             </div>
             
             {/* 🛡️ SAFETY WARNING FOR AUCTIONS */}
             {listing.is_auction && (
               <div className="mt-6 p-4 bg-yellow-900/20 border border-yellow-500/30 rounded-xl flex items-start gap-3">
-                <span className="text-xl">️</span>
+                <span className="text-xl">⚠️</span>
                 <div>
                   <h4 className="font-bold text-yellow-400 text-sm mb-1">Safety First</h4>
                   <p className="text-xs text-gray-400">Margin does not process payments. For high-value auction wins, we strongly recommend Local Pickup in a safe, public place. Never send money via wire transfer or gift cards.</p>
@@ -470,7 +483,7 @@ export default function ClientPage() {
 
       {showReviewModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold mb-4 text-white">Leave a Review</h3>
             <p className="text-gray-400 mb-6 text-sm">How was your experience with this seller?</p>
             <div className="mb-6">
@@ -483,7 +496,8 @@ export default function ClientPage() {
             </div>
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-400 mb-2">Comment (Optional)</label>
-              <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} rows={3} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 resize-none" placeholder="Share your experience..." />
+              {/* 🛡️ EDGE CASE: Added text-base to prevent iOS zoom */}
+              <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} rows={3} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-blue-500 resize-none" placeholder="Share your experience..." />
             </div>
             <div className="flex gap-3">
               <button onClick={() => setShowReviewModal(false)} className="flex-1 p-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition">Cancel</button>
@@ -495,10 +509,11 @@ export default function ClientPage() {
 
       {showReportModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold mb-4 text-white">Report Listing</h3>
             <p className="text-gray-400 mb-6 text-sm">Why are you reporting this item?</p>
-            <select value={reportReason} onChange={(e) => setReportReason(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 mb-6">
+            {/* 🛡️ EDGE CASE: Added text-base to prevent iOS zoom */}
+            <select value={reportReason} onChange={(e) => setReportReason(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-blue-500 mb-6">
               <option value="Spam">Spam or Misleading</option>
               <option value="Scam">Suspected Scam</option>
               <option value="Inappropriate">Inappropriate Content</option>
