@@ -79,8 +79,13 @@ export default function MyListingsPage() {
   const [holdRequests, setHoldRequests] = useState<any[]>([]);
   const [processingHold, setProcessingHold] = useState<string | null>(null);
   
-  // 🛡️ EDGE CASE: Prevent double-clicks on async actions
+  // ️ EDGE CASE: Prevent double-clicks on async actions
   const [processingAction, setProcessingAction] = useState<string | null>(null);
+  
+  // 🆕 PRICE DROP WATCHER STATES
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const [newPrice, setNewPrice] = useState("");
+  const [isUpdatingPrice, setIsUpdatingPrice] = useState(false);
   
   const router = useRouter();
 
@@ -164,7 +169,7 @@ export default function MyListingsPage() {
     const { error } = await supabase.from("listings").update({ status: 'Sold' }).eq("id", id);
     if (!error) {
       setListings(listings.map(l => l.id === id ? { ...l, status: 'Sold' } : l));
-      toast.success("🎉 Marked as Sold!");
+      toast.success(" Marked as Sold!");
     } else {
       toast.error("Error marking as sold.");
     }
@@ -214,7 +219,7 @@ export default function MyListingsPage() {
           return dateB - dateA;
         });
       });
-      toast.success("🚀 Listing bumped to the top!");
+      toast.success(" Listing bumped to the top!");
     } else {
       toast.error("Error bumping listing.");
     }
@@ -310,6 +315,62 @@ export default function MyListingsPage() {
     setProcessingHold(null);
   };
 
+  // 🆕 PRICE DROP WATCHER HANDLER
+  const handlePriceUpdate = async (listingId: string, currentPrice: number, currencyCode: string) => {
+    if (!newPrice || parseFloat(newPrice) <= 0) {
+      toast.error("Please enter a valid price.");
+      return;
+    }
+
+    const newPriceNum = parseFloat(newPrice);
+    if (newPriceNum >= currentPrice) {
+      toast.error("New price must be lower than current price to trigger notifications.");
+      return;
+    }
+
+    setIsUpdatingPrice(true);
+    try {
+      // 1. Fetch current listing to get old price
+      const { data: oldListing } = await supabase.from("listings").select("sale_price").eq("id", listingId).single();
+      
+      // 2. Check if price is dropping
+      if (newPriceNum < oldListing.sale_price) {
+        // 3. Find all users who saved this item
+        const { data: watchers } = await supabase
+          .from("saved_items")
+          .select("user_id")
+          .eq("listing_id", listingId);
+
+        if (watchers && watchers.length > 0) {
+          const symbol = getSymbol(currencyCode);
+          // 4. Create notifications for ALL watchers
+          const notificationsToInsert = watchers.map(watcher => ({
+            user_id: watcher.user_id,
+            content: `📉 Price Drop Alert! An item you saved just dropped to ${symbol}${newPriceNum}. Don't miss out!`,
+            is_read: false
+          }));
+
+          await supabase.from("notifications").insert(notificationsToInsert);
+          toast.success(` Price dropped! Notified ${watchers.length} watcher${watchers.length > 1 ? 's' : ''}.`);
+        }
+      }
+
+      // 5. Update the listing with new price
+      const { error } = await supabase.from("listings").update({ sale_price: newPriceNum }).eq("id", listingId);
+      
+      if (error) throw error;
+      
+      // Update local state
+      setListings(prev => prev.map(l => l.id === listingId ? { ...l, sale_price: newPriceNum } : l));
+      toast.success("💰 Price updated successfully!");
+      setEditingPriceId(null);
+      setNewPrice("");
+    } catch (error: any) {
+      toast.error("Failed to update price: " + error.message);
+    }
+    setIsUpdatingPrice(false);
+  };
+
   if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><p>Loading...</p></main>;
 
   return (
@@ -320,13 +381,13 @@ export default function MyListingsPage() {
           <Link href="/dashboard"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent cursor-pointer">Margin</h1></Link>
           <div className="flex items-center gap-2 md:gap-4">
             <Link href="/dashboard"><button className="px-3 md:px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-xs md:text-sm font-bold rounded-lg transition">Dashboard</button></Link>
-            <Link href="/marketplace"><button className="hidden sm:block px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs md:text-sm font-bold rounded-lg transition">🌍 Marketplace</button></Link>
+            <Link href="/marketplace"><button className="hidden sm:block px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs md:text-sm font-bold rounded-lg transition"> Marketplace</button></Link>
             <Link href="/generate"><button className="px-3 md:px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs md:text-sm font-bold rounded-lg transition shadow-lg shadow-blue-900/50">+ New</button></Link>
           </div>
         </div>
       </nav>
 
-      {/* 📱 MOBILE POLISH: Adjusted padding and text sizes */}
+      {/*  MOBILE POLISH: Adjusted padding and text sizes */}
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-8 md:py-12">
         <h2 className="text-3xl md:text-4xl font-bold mb-2">My Listings</h2>
         <p className="text-gray-400 text-base md:text-lg mb-8 md:mb-12">Manage, copy, and publish your products.</p>
@@ -337,7 +398,7 @@ export default function MyListingsPage() {
             <Link href="/generate"><button className="px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition">Create Your First Listing</button></Link>
           </div>
         ) : (
-          // 📱 MOBILE POLISH: Adjusted grid gaps for mobile
+          //  MOBILE POLISH: Adjusted grid gaps for mobile
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
             {listings.map((listing) => {
               const hasOffers = offersByListing[listing.id] && offersByListing[listing.id].length > 0;
@@ -358,12 +419,12 @@ export default function MyListingsPage() {
                     <img src={listing.image_url} alt={listing.product_name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     
                     <div className={`absolute top-4 right-4 backdrop-blur-md px-3 py-1 rounded-full border ${listing.status === 'Sold' ? 'bg-green-600/90 border-green-400' : listing.is_reserved ? 'bg-purple-600/90 border-purple-400' : listing.status === 'Pending' ? 'bg-yellow-600/90 border-yellow-400' : listing.status === 'Expired' ? 'bg-gray-600/90 border-gray-400' : 'bg-gray-950/80 border-gray-700'}`}>
-                      <span className="text-xs font-bold text-white uppercase">{listing.is_reserved ? '🔒 Reserved' : listing.status}</span>
+                      <span className="text-xs font-bold text-white uppercase">{listing.is_reserved ? ' Reserved' : listing.status}</span>
                     </div>
 
                     {listing.is_pinned && (
                       <div className="absolute top-4 left-4 bg-yellow-500/90 backdrop-blur-md px-3 py-1 rounded-full border border-yellow-300">
-                        <span className="text-xs font-bold text-white uppercase">📌 Pinned</span>
+                        <span className="text-xs font-bold text-white uppercase"> Pinned</span>
                       </div>
                     )}
                     {listing.is_public && listing.status !== 'Sold' && listing.status !== 'Expired' && !listing.is_pinned && (
@@ -398,7 +459,7 @@ export default function MyListingsPage() {
                               </div>
                               <div className="flex gap-2">
                                 <button onClick={() => handleApproveHold(req.id, listing.id, req.buyer_id, req.expires_at)} disabled={processingHold === req.id} className="px-3 py-1 bg-green-600 hover:bg-green-500 text-white text-xs rounded font-bold disabled:opacity-50">✅ Approve</button>
-                                <button onClick={() => handleDeclineHold(req.id)} disabled={processingHold === req.id} className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded font-bold disabled:opacity-50">❌ Decline</button>
+                                <button onClick={() => handleDeclineHold(req.id)} disabled={processingHold === req.id} className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-xs rounded font-bold disabled:opacity-50"> Decline</button>
                               </div>
                             </div>
                           ))}
@@ -446,7 +507,7 @@ export default function MyListingsPage() {
                       </div>
                     ) : (
                       <div className="mb-4 p-4 rounded-xl border border-dashed border-gray-700 bg-gray-800/30 flex flex-col items-center text-center gap-2">
-                        <span className="text-sm text-gray-400">🔒 Unlock Views, Offers & Conversion Analytics</span>
+                        <span className="text-sm text-gray-400"> Unlock Views, Offers & Conversion Analytics</span>
                         <Link href="/pricing">
                           <button className="text-xs bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white px-4 py-2 rounded-lg font-bold transition shadow-lg shadow-blue-900/30">Upgrade to Pro</button>
                         </Link>
@@ -474,6 +535,41 @@ export default function MyListingsPage() {
                           </div>
                           <button onClick={() => setViewingOffersFor(null)} className="w-full mt-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-bold transition">Close Offers</button>
                         </div>
+                      ) : editingPriceId === listing.id ? (
+                        // 🆕 PRICE EDIT MODAL (Inline)
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-xs text-gray-400 mb-1">New Price ({symbol})</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={newPrice}
+                              onChange={(e) => setNewPrice(e.target.value)}
+                              className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-blue-500"
+                              placeholder="Enter new price"
+                              autoFocus
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handlePriceUpdate(listing.id, listing.sale_price, listing.currency_code)}
+                              disabled={isUpdatingPrice}
+                              className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white text-sm font-bold rounded-lg transition"
+                            >
+                              {isUpdatingPrice ? "..." : "💾 Save"}
+                            </button>
+                            <button
+                              onClick={() => { setEditingPriceId(null); setNewPrice(""); }}
+                              className="flex-1 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold rounded-lg transition"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                          {parseFloat(newPrice) < listing.sale_price && (
+                            <p className="text-xs text-green-400 text-center">📉 Price drop! Buyers who saved this will be notified.</p>
+                          )}
+                        </div>
                       ) : (
                         <>
                           {copyMenuOpen === listing.id && (
@@ -481,7 +577,7 @@ export default function MyListingsPage() {
                             <div className="absolute bottom-full left-0 mb-2 w-full bg-gray-800 border border-gray-700 rounded-xl shadow-2xl overflow-hidden z-50">
                               <button onClick={() => handleCopy(listing, "standard")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition border-b border-gray-700"> Standard Copy</button>
                               <button onClick={() => handleCopy(listing, "fb")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition border-b border-gray-700">📘 Facebook Marketplace</button>
-                              <button onClick={() => handleCopy(listing, "ebay")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition">🛒 eBay Optimized</button>
+                              <button onClick={() => handleCopy(listing, "ebay")} className="w-full text-left px-4 py-3 hover:bg-gray-700 text-sm font-bold transition"> eBay Optimized</button>
                             </div>
                           )}
                           <div className="flex gap-2 flex-wrap">
@@ -501,8 +597,19 @@ export default function MyListingsPage() {
                               </button>
                             )}
 
+                            {/* 🆕 EDIT PRICE BUTTON */}
+                            {listing.status !== 'Sold' && listing.status !== 'Expired' && (
+                              <button
+                                onClick={() => { setEditingPriceId(listing.id); setNewPrice(listing.sale_price.toString()); }}
+                                className="px-3 py-3 bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white rounded-xl text-sm font-bold transition border border-blue-500/20 flex justify-center items-center gap-1"
+                                title="Edit Price"
+                              >
+                                ✏️ Edit
+                              </button>
+                            )}
+
                             {hasOffers && (
-                              <button onClick={() => setViewingOffersFor(listing.id)} className="flex-1 px-4 py-3 bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white rounded-xl text-sm font-bold transition border border-green-500/20 flex justify-center items-center gap-2">💰 Offers</button>
+                              <button onClick={() => setViewingOffersFor(listing.id)} className="flex-1 px-4 py-3 bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white rounded-xl text-sm font-bold transition border border-green-500/20 flex justify-center items-center gap-2"> Offers</button>
                             )}
                             <button onClick={() => setCopyMenuOpen(copyMenuOpen === listing.id ? null : listing.id)} className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-bold transition border border-gray-700 flex justify-center items-center gap-2">📋 Copy</button>
                             <button onClick={() => handleDelete(listing.id, listing.image_url)} disabled={deletingId === listing.id} className="px-4 py-3 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-xl text-sm font-bold transition border border-red-500/20 disabled:opacity-50">
