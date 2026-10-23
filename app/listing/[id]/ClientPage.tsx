@@ -65,7 +65,8 @@ export default function ClientPage() {
         }
         
         const firstImage = listingData.image_url || (listingData.image_urls && listingData.image_urls[0]);
-        setSelectedImage(firstImage || null);
+        // 🛡️ NABJO VERIFIED: Default to video if it exists, otherwise first image
+        setSelectedImage(listingData.video_url ? 'video' : (firstImage || null));
         
         // 🆕 Fetch seller WITH country and verification status for safety checks
         const { data: sellerData } = await supabase.from("profiles").select("full_name, created_at, country, is_verified").eq("id", listingData.user_id).single();
@@ -295,7 +296,7 @@ export default function ClientPage() {
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
-          <Link href="/marketplace"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Margin</h1></Link>
+          <Link href="/marketplace"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Nabjo</h1></Link>
           <Link href="/marketplace"><button className="px-3 md:px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition">Back</button></Link>
         </div>
       </nav>
@@ -307,23 +308,61 @@ export default function ClientPage() {
             <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden aspect-square flex items-center justify-center relative">
               {/* 🆕 LIVE AUCTION BADGE */}
               {isAuctionActive && (
-                <div className="absolute top-4 left-4 z-10 bg-red-600/90 backdrop-blur-md px-3 py-1.5 md:px-4 md:py-2 rounded-full border border-red-400 flex items-center gap-2 animate-pulse">
+                <div className="absolute top-4 left-4 z-20 bg-red-600/90 backdrop-blur-md px-3 py-1.5 md:px-4 md:py-2 rounded-full border border-red-400 flex items-center gap-2 animate-pulse">
                   <span className="w-2 h-2 bg-white rounded-full"></span>
                   <span className="text-xs md:text-sm font-bold text-white">LIVE • {timeLeft}</span>
                 </div>
               )}
-              {selectedImage ? <img src={selectedImage} alt={listing.product_name} className="w-full h-full object-contain" /> : <div className="text-gray-600 text-xl">No Image Available</div>}
+
+              {/* 🛡️ NABJO VERIFIED VIDEO PLAYER WITH DYNAMIC WATERMARK */}
+              {listing.video_url && selectedImage === 'video' ? (
+                <div className="relative w-full h-full bg-black flex items-center justify-center">
+                  <video 
+                    src={listing.video_url} 
+                    controls 
+                    className="w-full h-full object-contain"
+                  />
+                  {/* Dynamic Watermark Overlay */}
+                  <div className="absolute bottom-4 right-4 z-10 bg-black/80 backdrop-blur-md border border-green-500/50 px-3 py-2 rounded-lg flex flex-col items-end pointer-events-none shadow-2xl">
+                    <div className="flex items-center gap-1.5 text-green-400 font-bold text-xs md:text-sm tracking-wide">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                      NABJO VERIFIED
+                    </div>
+                    <div className="text-[10px] md:text-xs text-gray-300 mt-0.5 font-mono">
+                      {new Date().toLocaleDateString()} • ID: {listing.id.slice(0, 8).toUpperCase()}
+                    </div>
+                  </div>
+                </div>
+              ) : selectedImage ? (
+                <img src={selectedImage} alt={listing.product_name} className="w-full h-full object-contain" />
+              ) : (
+                <div className="text-gray-600 text-xl">No Media Available</div>
+              )}
             </div>
-            {listing.image_urls && listing.image_urls.length > 1 && (
-              //  MOBILE POLISH: Adjusted grid for thumbnails
-              <div className="grid grid-cols-5 gap-2 md:gap-3">
-                {listing.image_urls.map((url: string, index: number) => (
-                  <button key={index} onClick={() => setSelectedImage(url)} className={`aspect-square rounded-lg md:rounded-xl overflow-hidden border-2 transition ${selectedImage === url ? 'border-blue-500' : 'border-gray-800 hover:border-gray-600'}`}>
-                    <img src={url} alt={`Thumbnail ${index}`} className="w-full h-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            )}
+
+            {/* Thumbnails / Video Indicator */}
+            <div className="grid grid-cols-5 gap-2 md:gap-3">
+              {listing.video_url && (
+                <button 
+                  onClick={() => setSelectedImage('video')} 
+                  className={`aspect-square rounded-lg md:rounded-xl overflow-hidden border-2 transition relative ${selectedImage === 'video' ? 'border-blue-500' : 'border-gray-800 hover:border-gray-600'}`}
+                >
+                  <video src={listing.video_url} className="w-full h-full object-cover" muted />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                    <svg className="w-6 h-6 text-white drop-shadow-md" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" /></svg>
+                  </div>
+                </button>
+              )}
+              {listing.image_urls && listing.image_urls.map((url: string, index: number) => (
+                <button 
+                  key={index} 
+                  onClick={() => setSelectedImage(url)} 
+                  className={`aspect-square rounded-lg md:rounded-xl overflow-hidden border-2 transition ${selectedImage === url ? 'border-blue-500' : 'border-gray-800 hover:border-gray-600'}`}
+                >
+                  <img src={url} alt={`Thumbnail ${index}`} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
           </div>
           
           <div className="flex flex-col">
@@ -473,7 +512,7 @@ export default function ClientPage() {
                 <span className="text-xl">⚠️</span>
                 <div>
                   <h4 className="font-bold text-yellow-400 text-sm mb-1">Safety First</h4>
-                  <p className="text-xs text-gray-400">Margin does not process payments. For high-value auction wins, we strongly recommend Local Pickup in a safe, public place. Never send money via wire transfer or gift cards.</p>
+                  <p className="text-xs text-gray-400">Nabjo does not process payments. For high-value auction wins, we strongly recommend Local Pickup in a safe, public place. Never send money via wire transfer or gift cards.</p>
                 </div>
               </div>
             )}
