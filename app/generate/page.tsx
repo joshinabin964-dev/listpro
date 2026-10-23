@@ -128,7 +128,6 @@ const polishDescriptionAI = (text: string) => {
 
 const polishTitleAI = (text: string) => {
   if (!text) return text;
-  // Simple title case and cleanup
   return text
     .split(' ')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -148,8 +147,11 @@ export default function GeneratePage() {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   
+  // 🛡️ NABJO LIVE CAPTURE STATES
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
   
   const [loading, setLoading] = useState(false);
   const [currency, setCurrency] = useState(currencyMap["default"]); 
@@ -171,7 +173,12 @@ export default function GeneratePage() {
   const [isPolishing, setIsPolishing] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoInputRef = useRef<HTMLInputElement>(null);
+  
+  // 🎥 LIVE CAPTURE REFS
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const isRecordingRef = useRef(false);
+  const animationFrameRef = useRef<number | null>(null);
+
   const router = useRouter();
 
   useEffect(() => {
@@ -191,6 +198,18 @@ export default function GeneratePage() {
     };
     getUserData();
   }, []);
+
+  // Cleanup camera stream on unmount
+  useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [stream]);
 
   // 🧠 99.99% ACCURATE FAIR PRICE GAUGE LOGIC
   useEffect(() => {
@@ -286,24 +305,122 @@ export default function GeneratePage() {
     setImagePreviews(imagePreviews.filter((_, i) => i !== index));
   };
 
-  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 50 * 1024 * 1024) { 
-        toast.error("Video must be under 50MB.");
-        return;
+  // 🛡️ NABJO LIVE CAPTURE ENGINE
+  const startRecording = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, 
+        audio: true 
+      });
+      setStream(mediaStream);
+
+      const videoEl = document.createElement('video');
+      videoEl.srcObject = mediaStream;
+      videoEl.muted = true; // Prevent audio feedback
+      videoEl.play();
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      const canvasStream = canvas.captureStream(30);
+      const audioTrack = mediaStream.getAudioTracks()[0];
+      if (audioTrack) {
+        canvasStream.addTrack(audioTrack);
       }
-      setVideoFile(file);
-      const url = URL.createObjectURL(file);
-      setVideoPreview(url);
+
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
+        ? 'video/webm;codecs=vp9,opus' 
+        : 'video/webm';
+        
+      const recorder = new MediaRecorder(canvasStream, { mimeType });
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const file = new File([blob], `nabjo-proof-${Date.now()}.webm`, { type: 'video/webm' });
+        setVideoFile(file);
+        setVideoPreview(URL.createObjectURL(blob));
+        
+        mediaStream.getTracks().forEach(track => track.stop());
+        setStream(null);
+        setIsRecording(false);
+        isRecordingRef.current = false;
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+      };
+
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+      isRecordingRef.current = true;
+
+      const drawFrame = () => {
+        if (!isRecordingRef.current || !ctx) return;
+        
+        // Set canvas size dynamically based on video resolution
+        if (videoEl.videoWidth > 0 && canvas.width !== videoEl.videoWidth) {
+          canvas.width = videoEl.videoWidth;
+          canvas.height = videoEl.videoHeight;
+        }
+
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        
+        // Draw Watermark Background (bottom right, responsive)
+        const padding = 20;
+        const boxWidth = Math.min(340, canvas.width * 0.4);
+        const boxHeight = 80;
+        const x = canvas.width - boxWidth - padding;
+        const y = canvas.height - boxHeight - padding;
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(x, y, boxWidth, boxHeight);
+        
+        ctx.fillStyle = '#4ade80'; // green-400
+        ctx.font = `bold ${Math.max(14, canvas.width * 0.02)}px sans-serif`;
+        ctx.fillText('✅ NABJO VERIFIED • LIVE', x + 15, y + 35);
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `${Math.max(12, canvas.width * 0.015)}px monospace`;
+        const dateStr = new Date().toLocaleDateString();
+        ctx.fillText(`${dateStr} • PROOF`, x + 15, y + 60);
+
+        animationFrameRef.current = requestAnimationFrame(drawFrame);
+      };
+      
+      videoEl.onloadedmetadata = () => {
+        drawFrame();
+      };
+
+    } catch (err) {
+      console.error("Error accessing camera:", err);
+      toast.error("Could not access camera. Please allow camera permissions to use Live Capture.");
     }
-    if (videoInputRef.current) videoInputRef.current.value = "";
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
   };
 
   const removeVideo = () => {
+    if (videoPreview) URL.revokeObjectURL(videoPreview);
     setVideoFile(null);
     setVideoPreview(null);
-    if (videoInputRef.current) videoInputRef.current.value = "";
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+    setIsRecording(false);
+    isRecordingRef.current = false;
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
   };
 
   // 🆕 PRO AI HANDLER
@@ -386,7 +503,7 @@ export default function GeneratePage() {
 
       let videoUrl = null;
       if (videoFile) {
-        const fileExt = videoFile.name.split('.').pop() || 'mp4';
+        const fileExt = videoFile.name.split('.').pop() || 'webm';
         const fileName = `${session.user.id}-vid-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
         
         const { error: uploadError } = await supabase.storage.from('product-videos').upload(fileName, videoFile);
@@ -506,23 +623,54 @@ export default function GeneratePage() {
             )}
           </div>
 
+          {/* 🛡️ NABJO LIVE CAPTURE UI */}
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-2 flex items-center gap-2">
-              <span className="text-green-400">🎥</span> Video Proof (Highly Recommended)
-              <span className="text-xs text-gray-500 font-normal">Builds instant trust & prevents scams</span>
+              <span className="text-green-400">🎥</span> Nabjo Live Capture (Highly Recommended)
+              <span className="text-xs text-gray-500 font-normal">Burns a live watermark to prevent scams</span>
             </label>
-            <input type="file" ref={videoInputRef} onChange={handleVideoChange} accept="video/*" className="hidden" />
+            
             {!videoPreview ? (
-              <div onClick={() => videoInputRef.current?.click()} className="w-full h-48 border-2 border-dashed border-green-500/30 bg-green-500/5 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-green-500 hover:bg-green-500/10 transition group">
-                <span className="text-4xl mb-2 group-hover:scale-110 transition">🎬</span>
-                <span className="text-green-400 font-medium">Upload a short video proof</span>
-                <span className="text-xs text-gray-500 mt-1">Max 50MB • Shows the item is real</span>
-              </div>
+              isRecording ? (
+                <div className="w-full bg-black rounded-xl overflow-hidden border-2 border-red-500 relative aspect-video flex flex-col items-center justify-center">
+                  <div className="absolute top-4 left-4 z-10 bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-full animate-pulse flex items-center gap-2">
+                    <span className="w-2 h-2 bg-white rounded-full"></span> RECORDING LIVE
+                  </div>
+                  <div className="absolute bottom-4 left-0 right-0 text-center px-4 z-10">
+                    <p className="text-yellow-400 font-bold text-sm md:text-base bg-black/60 inline-block px-3 py-1 rounded-lg backdrop-blur-sm border border-yellow-500/30">
+                      ⚠️ SAFETY CHECK: Show the item and hold up 3 fingers!
+                    </p>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={stopRecording}
+                    className="z-20 w-16 h-16 bg-red-600 rounded-full border-4 border-white flex items-center justify-center hover:bg-red-700 transition shadow-lg mt-8"
+                  >
+                    <div className="w-6 h-6 bg-white rounded-sm"></div>
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  type="button"
+                  onClick={startRecording}
+                  className="w-full h-48 border-2 border-dashed border-green-500/50 bg-green-500/5 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-green-500 hover:bg-green-500/10 transition group"
+                >
+                  <span className="text-4xl mb-2 group-hover:scale-110 transition">🎬</span>
+                  <span className="text-green-400 font-bold text-lg">Start Live Recording</span>
+                  <span className="text-xs text-gray-400 mt-2 max-w-xs text-center">
+                    Opens your camera. A "Nabjo Verified" watermark will be permanently burned into the video to prove it's real.
+                  </span>
+                </button>
+              )
             ) : (
               <div className="space-y-4">
                 <div className="relative w-full bg-black rounded-xl overflow-hidden border border-green-500/30 aspect-video flex items-center justify-center">
                   <video src={videoPreview} controls className="w-full h-full object-contain" />
-                  <button type="button" onClick={removeVideo} className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-lg text-xs font-bold shadow-lg">Remove Video</button>
+                  <button type="button" onClick={removeVideo} className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-lg text-xs font-bold shadow-lg z-10">Remove Video</button>
+                </div>
+                <div className="flex items-center gap-2 text-green-400 text-sm bg-green-900/20 p-3 rounded-lg border border-green-500/30">
+                  <svg className="w-5 h-5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                  <span>Video successfully recorded with Nabjo Live Watermark!</span>
                 </div>
               </div>
             )}
@@ -531,7 +679,6 @@ export default function GeneratePage() {
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="block text-sm font-medium text-gray-400">Product Title (Required)</label>
-              {/* 🆕 PRO AI BUTTON */}
               <button 
                 type="button" 
                 onClick={() => handleAIPolish('title')}
@@ -650,7 +797,6 @@ export default function GeneratePage() {
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="block text-sm font-medium text-gray-400">Description</label>
-              {/* 🆕 PRO AI BUTTON */}
               <button 
                 type="button" 
                 onClick={() => handleAIPolish('description')}
