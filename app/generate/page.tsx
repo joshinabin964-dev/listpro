@@ -110,6 +110,32 @@ const compressImage = async (file: File): Promise<File> => {
   });
 };
 
+// 🆕 $0 COST HEURISTIC AI: Transforms messy text into professional listings
+const polishDescriptionAI = (text: string) => {
+  if (!text || text.length < 15) return text;
+  const lines = text.split('\n').filter(line => line.trim() !== '');
+  let polished = "✨ **Item Overview:**\n" + lines[0] + "\n\n";
+  
+  if (lines.length > 1) {
+    polished += "📌 **Key Details:**\n";
+    lines.slice(1).forEach(line => {
+      polished += `• ${line.trim()}\n`;
+    });
+  }
+  polished += "\n📦 **Note:** Item is exactly as described. Feel free to message with any questions!";
+  return polished;
+};
+
+const polishTitleAI = (text: string) => {
+  if (!text) return text;
+  // Simple title case and cleanup
+  return text
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ')
+    .replace(/\b(Usb|Hdmi|Ssd|Ram|Gb|Tb)\b/gi, match => match.toUpperCase());
+};
+
 export default function GeneratePage() {
   const [title, setTitle] = useState("");
   const [salePrice, setSalePrice] = useState("");
@@ -140,6 +166,9 @@ export default function GeneratePage() {
   const [model, setModel] = useState("");
   const [storage, setStorage] = useState("");
   const [priceGauge, setPriceGauge] = useState<{ status: string; color: string; avg: number; median: number }>({ status: "", color: "", avg: 0, median: 0 });
+
+  // 🆕 PRO AI STATES
+  const [isPolishing, setIsPolishing] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -222,7 +251,7 @@ export default function GeneratePage() {
         } else if (ratio < 0.8) {
           setPriceGauge({ status: `Great Deal 🔵 (Will sell fast! Based on ${matchType})`, color: "text-blue-400", avg: weightedAvg, median });
         } else {
-          setPriceGauge({ status: `Fair Price  (High chance of selling. Based on ${matchType})`, color: "text-green-400", avg: weightedAvg, median });
+          setPriceGauge({ status: `Fair Price 🟢 (High chance of selling. Based on ${matchType})`, color: "text-green-400", avg: weightedAvg, median });
         }
       } else {
         setPriceGauge({ status: "You're setting the market! No recent matches found.", color: "text-gray-400", avg: 0, median: 0 });
@@ -275,6 +304,27 @@ export default function GeneratePage() {
     setVideoFile(null);
     setVideoPreview(null);
     if (videoInputRef.current) videoInputRef.current.value = "";
+  };
+
+  // 🆕 PRO AI HANDLER
+  const handleAIPolish = (field: 'title' | 'description') => {
+    if (userPlan !== 'pro') {
+      toast.error("🔒 AI Polish is a Pro feature! Upgrade to unlock unlimited AI tools.");
+      router.push("/pricing");
+      return;
+    }
+
+    setIsPolishing(true);
+    setTimeout(() => {
+      if (field === 'title') {
+        setTitle(polishTitleAI(title));
+        toast.success("✨ Title optimized for maximum views!");
+      } else {
+        setDescription(polishDescriptionAI(description));
+        toast.success("✨ Description polished to look highly professional!");
+      }
+      setIsPolishing(false);
+    }, 600); // Fake 600ms delay to make it feel like "thinking" AI
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -393,7 +443,7 @@ export default function GeneratePage() {
         toast.error("Error saving listing: " + dbError.message); 
       } else { 
         if (isPublic) {
-          toast.success(listingType === 'auction' ? " Live Auction Published!" : "🌍 Published to Public Marketplace!");
+          toast.success(listingType === 'auction' ? "🔴 Live Auction Published!" : "🌍 Published to Public Marketplace!");
         } else {
           toast.success("💾 Saved to Drafts successfully!");
         }
@@ -409,14 +459,12 @@ export default function GeneratePage() {
   };
 
   return (
-    // 📱 MOBILE POLISH: Changed p-8 to p-4 md:p-8 for better mobile spacing
     <main className="min-h-screen bg-gray-950 text-white p-4 md:p-8">
       <div className="max-w-3xl mx-auto">
         <Link href="/my-listings" className="mb-6 md:mb-8 text-gray-400 hover:text-white flex items-center gap-2 w-fit text-sm md:text-base">← Back</Link>
         <h1 className="text-2xl md:text-3xl font-bold mb-2 text-blue-500">Create New Listing</h1>
         <p className="text-gray-400 mb-6 md:mb-8 text-sm md:text-base">List your product in <span className="text-white font-bold">{currency.code}</span> ({currency.symbol}).</p>
 
-        {/* 📱 MOBILE POLISH: Changed p-8 to p-4 md:p-8 */}
         <form onSubmit={handleSubmit} className="space-y-6 bg-gray-900 p-4 md:p-8 rounded-2xl border border-gray-800">
           
           <div>
@@ -426,7 +474,7 @@ export default function GeneratePage() {
                 <div className="font-bold text-lg">Fixed Price</div>
                 <div className="text-sm opacity-80">Standard listing with a set price.</div>
               </button>
-              <button type="button" onClick={() => { if (userPlan === 'free') { toast.error(" Live Auctions are a Pro feature! Upgrade to unlock."); router.push("/pricing"); } else { setListingType('auction'); } }} className={`p-4 rounded-xl border text-left transition relative ${listingType === 'auction' ? 'bg-purple-600/20 border-purple-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
+              <button type="button" onClick={() => { if (userPlan === 'free') { toast.error("🔒 Live Auctions are a Pro feature! Upgrade to unlock."); router.push("/pricing"); } else { setListingType('auction'); } }} className={`p-4 rounded-xl border text-left transition relative ${listingType === 'auction' ? 'bg-purple-600/20 border-purple-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
                 {userPlan === 'free' && (<div className="absolute top-2 right-2 bg-yellow-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full">PRO</div>)}
                 <div className="font-bold text-lg flex items-center gap-2">🔴 Live Auction <span className="text-xs bg-purple-500/30 px-2 py-0.5 rounded">Pro</span></div>
                 <div className="text-sm opacity-80">Let buyers bid and drive up the price.</div>
@@ -443,7 +491,6 @@ export default function GeneratePage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {/* 📱 MOBILE POLISH: Changed grid to stack better on small screens */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {imagePreviews.map((preview, index) => (
                     <div key={index} className="relative w-full h-32 bg-black rounded-xl overflow-hidden border border-gray-700">
@@ -482,12 +529,21 @@ export default function GeneratePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Product Title (Required)</label>
-            {/* 🛡️ EDGE CASE: Added text-base to prevent iOS auto-zoom on focus */}
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-gray-400">Product Title (Required)</label>
+              {/* 🆕 PRO AI BUTTON */}
+              <button 
+                type="button" 
+                onClick={() => handleAIPolish('title')}
+                disabled={isPolishing || !title}
+                className="text-xs flex items-center gap-1 bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 px-3 py-1.5 rounded-lg font-bold transition disabled:opacity-50"
+              >
+                {isPolishing ? "⏳ Polishing..." : "✨ AI Polish Title"}
+              </button>
+            </div>
             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-blue-500" placeholder="e.g. iPhone 13 Pro Max" />
           </div>
 
-          {/* 🧠 STRUCTURED DATA FOR 99.99% ACCURACY */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-2">Category</label>
@@ -522,7 +578,6 @@ export default function GeneratePage() {
             {listingType === 'auction' ? (
               <div className="md:col-span-3">
                 <label className="block text-sm font-medium text-gray-400 mb-2">Starting Bid ({currency.symbol}) *</label>
-                {/* 🛡️ EDGE CASE: Added min="0" to prevent negative prices */}
                 <input type="number" min="0" value={startingBid} onChange={(e) => setStartingBid(e.target.value)} required className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-purple-500" placeholder="0.00" />
               </div>
             ) : (
@@ -545,13 +600,10 @@ export default function GeneratePage() {
             )}
           </div>
 
-          {/* 🧠 99.99% ACCURATE FAIR PRICE GAUGE UI */}
           {priceGauge.status && listingType === 'fixed' && (
             <div className={`p-4 bg-gray-800/50 border border-gray-700 rounded-xl flex flex-col gap-2 ${priceGauge.color}`}>
               <div className="flex items-center justify-between">
-                <span className="font-bold text-sm flex items-center gap-2">
-                  {priceGauge.status}
-                </span>
+                <span className="font-bold text-sm flex items-center gap-2">{priceGauge.status}</span>
               </div>
               {priceGauge.avg > 0 && (
                 <div className="text-xs text-gray-400 flex items-center gap-2">
@@ -579,10 +631,10 @@ export default function GeneratePage() {
                   <label className="block text-sm font-medium text-gray-400 mb-2">Shipping Policy 🛡️</label>
                   <select value={shippingPolicy} onChange={(e) => setShippingPolicy(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-purple-500">
                     <option value="local_pickup">📍 Local Pickup Only (Safest)</option>
-                    <option value="domestic">🇺 Domestic Shipping Only</option>
+                    <option value="domestic">🇺🇸 Domestic Shipping Only</option>
                     <option value="worldwide">🌍 Worldwide Shipping</option>
                   </select>
-                  <p className="text-xs text-gray-500 mt-2">️ For high-value auctions, Local Pickup is highly recommended to prevent fraud.</p>
+                  <p className="text-xs text-gray-500 mt-2">⚠️ For high-value auctions, Local Pickup is highly recommended to prevent fraud.</p>
                 </div>
               </div>
             </div>
@@ -596,7 +648,18 @@ export default function GeneratePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Description</label>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-gray-400">Description</label>
+              {/* 🆕 PRO AI BUTTON */}
+              <button 
+                type="button" 
+                onClick={() => handleAIPolish('description')}
+                disabled={isPolishing || !description}
+                className="text-xs flex items-center gap-1 bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 px-3 py-1.5 rounded-lg font-bold transition disabled:opacity-50"
+              >
+                {isPolishing ? "⏳ Polishing..." : "✨ AI Polish Description"}
+              </button>
+            </div>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-blue-500 resize-none" placeholder="Describe your product..." />
           </div>
 
@@ -606,7 +669,7 @@ export default function GeneratePage() {
           </div>
 
           <button type="submit" disabled={loading} className="w-full p-4 bg-blue-600 hover:bg-blue-700 text-white text-xl font-bold rounded-xl transition disabled:opacity-50 flex justify-center items-center gap-2">
-            {loading ? (<><span className="animate-spin">⚙️</span> Processing...</>) : (<>{isPublic ? (listingType === 'auction' ? "🔴 Publish Live Auction" : " Publish to Marketplace") : "💾 Save to Drafts"}</>)}
+            {loading ? (<><span className="animate-spin">⚙️</span> Processing...</>) : (<>{isPublic ? (listingType === 'auction' ? "🔴 Publish Live Auction" : "🌍 Publish to Marketplace") : "💾 Save to Drafts"}</>)}
           </button>
         </form>
       </div>
