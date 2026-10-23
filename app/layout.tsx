@@ -7,8 +7,8 @@ import Bouncer from '@/components/Bouncer'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Margin - The Global Marketplace for Everything',
-  description: 'Buy, sell, and trade anything, anywhere. Margin is the global marketplace connecting people worldwide.',
+  title: 'Nabjo - The Global Marketplace for Everything',
+  description: 'Buy, sell, and trade anything, anywhere. Nabjo is the global marketplace connecting people worldwide.',
 }
 
 export default function RootLayout({

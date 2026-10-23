@@ -43,7 +43,7 @@ export default function LoginPage() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        toast.success("Welcome back to Margin! 🚀");
+        toast.success("Welcome back to Nabjo! 🚀");
         router.push("/dashboard");
       }
     } catch (error: any) {
@@ -75,9 +75,9 @@ export default function LoginPage() {
 
       <div className="w-full max-w-md p-8 bg-gray-900/80 backdrop-blur-xl rounded-2xl border border-gray-800 shadow-2xl">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Margin</h1>
+          <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Nabjo</h1>
           <p className="text-gray-400 text-sm">
-            {showForgotPassword ? "Reset your password below." : isSignUp ? "Create your account to start selling globally." : "Sign in to your Margin account."}
+            {showForgotPassword ? "Reset your password below." : isSignUp ? "Create your account to start selling globally." : "Sign in to your Nabjo account."}
           </p>
         </div>
         
@@ -148,7 +148,7 @@ export default function LoginPage() {
         )}
       </div>
       <div className="mt-8 text-center text-gray-600 text-xs">
-        <p>© {new Date().getFullYear()} Margin. The global marketplace for everything.</p>
+        <p>© {new Date().getFullYear()} Nabjo. The global marketplace for everything.</p>
       </div>
     </main>
   );

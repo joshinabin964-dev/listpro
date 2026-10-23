@@ -6,7 +6,7 @@ export default function LandingPage() {
       {/* Navigation */}
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Margin</h1>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Nabjo</h1>
           <div className="flex items-center gap-4">
             <Link href="/login"><button className="px-4 py-2 text-gray-300 hover:text-white text-sm font-bold transition">Log In</button></Link>
             <Link href="/login"><button className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-lg transition shadow-lg shadow-blue-900/50">Get Started</button></Link>
@@ -26,7 +26,7 @@ export default function LandingPage() {
             <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Start Selling Smart.</span>
           </h1>
           <p className="text-xl text-gray-400 mb-10 max-w-2xl mx-auto">
-            Track your profits, generate professional listings in seconds, and connect with local buyers. Margin is the modern marketplace for serious flippers.
+            Track your profits, generate professional listings in seconds, and connect with local buyers. Nabjo is the modern marketplace for serious flippers.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/login">
@@ -47,7 +47,7 @@ export default function LandingPage() {
       <section className="py-24 bg-gray-900/30 border-y border-gray-800">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">Why Top Sellers Choose Margin</h2>
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">Why Top Sellers Choose Nabjo</h2>
             <p className="text-gray-400 text-lg">Built for speed, trust, and maximum profit.</p>
           </div>
 
@@ -98,7 +98,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-gray-800 py-12 text-center text-gray-500 text-sm">
-        <p>© {new Date().getFullYear()} Margin. Built for serious sellers.</p>
+        <p>© {new Date().getFullYear()} Nabjo. Built for serious sellers.</p>
       </footer>
     </main>
   );

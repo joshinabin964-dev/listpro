@@ -378,7 +378,7 @@ export default function MyListingsPage() {
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
-          <Link href="/dashboard"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent cursor-pointer">Margin</h1></Link>
+          <Link href="/dashboard"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent cursor-pointer">Nabjo</h1></Link>
           <div className="flex items-center gap-2 md:gap-4">
             <Link href="/dashboard"><button className="px-3 md:px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-xs md:text-sm font-bold rounded-lg transition">Dashboard</button></Link>
             <Link href="/marketplace"><button className="hidden sm:block px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs md:text-sm font-bold rounded-lg transition"> Marketplace</button></Link>
