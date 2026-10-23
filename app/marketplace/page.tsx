@@ -280,27 +280,30 @@ export default function MarketplacePage() {
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
           <Link href="/"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Margin</h1></Link>
           <div className="flex items-center gap-2 md:gap-4">
-            <Link href="/dashboard"><button className="px-3 py-2 md:px-4 md:py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition">My Dashboard</button></Link>
+            <Link href="/dashboard"><button className="px-3 py-2 md:px-4 md:py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition">Dashboard</button></Link>
             <Link href="/generate"><button className="px-3 py-2 md:px-4 md:py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs md:text-sm font-bold transition">+ Sell</button></Link>
           </div>
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-4 md:px-6 py-8 md:py-12">
-        <div className="text-center mb-8 md:mb-12">
-          <h1 className="text-3xl md:text-4xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Public Marketplace</h1>
-          <p className="text-gray-400 text-base md:text-lg">Discover unique items listed by the Margin community.</p>
+      {/* 📱 MOBILE POLISH: Adjusted padding and text sizes */}
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-12">
+        <div className="text-center mb-6 md:mb-12">
+          <h1 className="text-3xl md:text-4xl font-bold mb-2 md:mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Public Marketplace</h1>
+          <p className="text-gray-400 text-sm md:text-lg">Discover unique items listed by the Margin community.</p>
         </div>
 
-        <form onSubmit={handleSearch} className="max-w-5xl mx-auto mb-12 space-y-4">
-          <div className="flex flex-col md:flex-row gap-4">
+        <form onSubmit={handleSearch} className="max-w-5xl mx-auto mb-8 md:mb-12 space-y-4">
+          {/* 📱 MOBILE POLISH: Stacked on mobile, row on desktop */}
+          <div className="flex flex-col md:flex-row gap-3 md:gap-4">
             <div className="relative flex-1 flex">
               <input 
                 type="text" 
                 value={searchTerm} 
                 onChange={(e) => setSearchTerm(e.target.value)} 
-                placeholder="Search for anything (e.g. iPhone, Sofa, Car, Nike)..." 
-                className="flex-1 p-4 bg-gray-900 border border-gray-800 rounded-l-xl text-white focus:outline-none focus:border-blue-500" 
+                placeholder="Search for anything..." 
+                // 🛡️ EDGE CASE: text-base prevents iOS auto-zoom
+                className="flex-1 p-3 md:p-4 bg-gray-900 border border-gray-800 rounded-l-xl text-white text-base focus:outline-none focus:border-blue-500" 
               />
               <button 
                 type="button"
@@ -311,25 +314,28 @@ export default function MarketplacePage() {
                 📸
               </button>
             </div>
-            <button type="submit" className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition">
-              Search
-            </button>
-            {(searchTerm || distanceFilter !== 'all' || minPrice || maxPrice || conditionFilter !== 'all') && (
-              <button 
-                type="button" 
-                onClick={handleClearSearch} 
-                className="px-6 py-4 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition"
-              >
-                Clear All
+            <div className="flex gap-3">
+              <button type="submit" className="flex-1 md:flex-none px-6 py-3 md:py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-base">
+                Search
               </button>
-            )}
+              {(searchTerm || distanceFilter !== 'all' || minPrice || maxPrice || conditionFilter !== 'all') && (
+                <button 
+                  type="button" 
+                  onClick={handleClearSearch} 
+                  className="flex-1 md:flex-none px-6 py-3 md:py-4 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition text-base"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
           
-          <div className="flex flex-wrap gap-4 p-4 bg-gray-900/50 border border-gray-800 rounded-xl">
+          {/* 📱 MOBILE POLISH: 2x2 Grid on mobile, Flex row on desktop */}
+          <div className="grid grid-cols-2 md:flex md:flex-wrap gap-3 p-4 bg-gray-900/50 border border-gray-800 rounded-xl">
             <select 
               value={distanceFilter} 
               onChange={(e) => { setDistanceFilter(e.target.value); fetchListings(searchTerm); }} 
-              className="flex-1 min-w-[140px] p-3 bg-gray-900 border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 cursor-pointer text-sm"
+              className="col-span-2 md:col-span-1 md:flex-1 min-w-[140px] p-3 bg-gray-900 border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 cursor-pointer text-base"
             >
               <option value="all">🌍 Anywhere</option>
               <option value="5">📍 Within 5 km</option>
@@ -342,36 +348,37 @@ export default function MarketplacePage() {
               value={minPrice} 
               onChange={(e) => setMinPrice(e.target.value)} 
               placeholder="Min Price" 
-              className="flex-1 min-w-[120px] p-3 bg-gray-900 border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 text-sm" 
+              className="col-span-1 md:flex-1 min-w-[120px] p-3 bg-gray-900 border border-gray-800 rounded-lg text-white text-base focus:outline-none focus:border-blue-500" 
             />
             <input 
               type="number" 
               value={maxPrice} 
               onChange={(e) => setMaxPrice(e.target.value)} 
               placeholder="Max Price" 
-              className="flex-1 min-w-[120px] p-3 bg-gray-900 border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 text-sm" 
+              className="col-span-1 md:flex-1 min-w-[120px] p-3 bg-gray-900 border border-gray-800 rounded-lg text-white text-base focus:outline-none focus:border-blue-500" 
             />
             
             <select 
               value={conditionFilter} 
               onChange={(e) => { setConditionFilter(e.target.value); fetchListings(searchTerm); }} 
-              className="flex-1 min-w-[140px] p-3 bg-gray-900 border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 cursor-pointer text-sm"
+              className="col-span-2 md:col-span-1 md:flex-1 min-w-[140px] p-3 bg-gray-900 border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 cursor-pointer text-base"
             >
               <option value="all">✨ Any Condition</option>
               <option value="New">New</option>
-              <option value="Like New">Like New</option>
-              <option value="Used">Used</option>
+              <option value="Used - Like New">Like New</option>
+              <option value="Used - Good">Good</option>
+              <option value="Used - Fair">Fair</option>
             </select>
           </div>
         </form>
 
         {listings.length === 0 ? (
-          <div className="text-center py-20 bg-gray-900 rounded-2xl border border-gray-800">
-            <p className="text-2xl text-gray-400 mb-6">No items found matching your filters.</p>
-            <Link href="/generate"><button className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition">Be the first to list an item!</button></Link>
+          <div className="text-center py-16 md:py-20 bg-gray-900 rounded-2xl border border-gray-800">
+            <p className="text-xl md:text-2xl text-gray-400 mb-6">No items found matching your filters.</p>
+            <Link href="/generate"><button className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-sm md:text-base">Be the first to list an item!</button></Link>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
             {listings.map((listing) => {
               const isSaved = savedListingIds.includes(listing.id);
               const firstImage = listing.image_url || (listing.image_urls && listing.image_urls[0]);
@@ -406,12 +413,12 @@ export default function MarketplacePage() {
                       )}
                     </div>
                     
-                    <div className="p-5 flex-1 flex flex-col">
+                    <div className="p-4 md:p-5 flex-1 flex flex-col">
                       <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-bold text-white text-lg truncate pr-2">{listing.product_name || listing.title}</h3>
-                        <span className="text-blue-400 font-bold text-lg whitespace-nowrap">{listing.currency_code === 'NPR' ? 'Rs. ' : '$'}{listing.sale_price}</span>
+                        <h3 className="font-bold text-white text-base md:text-lg truncate pr-2">{listing.product_name || listing.title}</h3>
+                        <span className="text-blue-400 font-bold text-base md:text-lg whitespace-nowrap">{listing.currency_code === 'NPR' ? 'Rs. ' : '$'}{listing.sale_price}</span>
                       </div>
-                      <p className="text-gray-500 text-sm mb-4 line-clamp-2">{listing.ai_description || listing.description || "No description provided."}</p>
+                      <p className="text-gray-500 text-xs md:text-sm mb-4 line-clamp-2">{listing.ai_description || listing.description || "No description provided."}</p>
                       <div className="mt-auto flex justify-between items-center text-xs text-gray-600 pt-4 border-t border-gray-800">
                         <span>{listing.condition || "Used"}</span>
                         <span>{listing.status}</span>
@@ -428,7 +435,7 @@ export default function MarketplacePage() {
       {/* 📸 VISUAL SEARCH MODAL */}
       {visualSearchModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-4 md:p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold mb-2 text-white flex items-center gap-2">📸 Visual Search</h3>
             <p className="text-gray-400 text-sm mb-4">Add a few keywords to describe the item in the photo.</p>
             
@@ -440,11 +447,12 @@ export default function MarketplacePage() {
 
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-400 mb-2">Keywords (Required)</label>
+              {/* 🛡️ EDGE CASE: text-base prevents iOS auto-zoom */}
               <input 
                 type="text" 
                 value={visualKeyword} 
                 onChange={(e) => setVisualKeyword(e.target.value)}
-                className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500"
+                className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-blue-500"
                 placeholder="e.g. brown leather chair, vintage lamp"
                 autoFocus
               />
@@ -464,8 +472,8 @@ export default function MarketplacePage() {
             </div>
 
             <div className="flex gap-3">
-              <button onClick={() => { setVisualSearchModalOpen(false); setSelectedImage(null); setVisualKeyword(""); }} className="flex-1 p-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition">Cancel</button>
-              <button onClick={handleVisualSearch} className="flex-1 p-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition">Search</button>
+              <button onClick={() => { setVisualSearchModalOpen(false); setSelectedImage(null); setVisualKeyword(""); }} className="flex-1 p-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition text-sm md:text-base">Cancel</button>
+              <button onClick={handleVisualSearch} className="flex-1 p-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-sm md:text-base">Search</button>
             </div>
           </div>
         </div>
