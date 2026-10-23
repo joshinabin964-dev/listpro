@@ -21,7 +21,7 @@ const currencyMap: Record<string, { symbol: string; code: string }> = {
   "Myanmar": { symbol: "K", code: "MMK" }, "Cambodia": { symbol: "៛", code: "KHR" },
   "Laos": { symbol: "₭", code: "LAK" }, "Mongolia": { symbol: "₮", code: "MNT" },
   "Papua New Guinea": { symbol: "K", code: "PGK" }, "Fiji": { symbol: "FJ$", code: "FJD" },
-  "UAE": { symbol: "د.إ", code: "AED" }, "Saudi Arabia": { symbol: "﷼", code: "SAR" },
+  "UAE": { symbol: "د.إ", code: "AED" }, "Saudi Arabia": { symbol: "", code: "SAR" },
   "Qatar": { symbol: "﷼", code: "QAR" }, "Kuwait": { symbol: "د.ك", code: "KWD" },
   "Oman": { symbol: "﷼", code: "OMR" }, "Bahrain": { symbol: ".د.ب", code: "BHD" },
   "Israel": { symbol: "₪", code: "ILS" }, "Turkey": { symbol: "₺", code: "TRY" },
@@ -30,7 +30,7 @@ const currencyMap: Record<string, { symbol: string; code: string }> = {
   "Jordan": { symbol: "د.ا", code: "JOD" }, "Lebanon": { symbol: "ل.ل", code: "LBP" },
   "Iraq": { symbol: "ع.د", code: "IQD" }, "Iran": { symbol: "﷼", code: "IRR" },
   "South Africa": { symbol: "R", code: "ZAR" }, "Nigeria": { symbol: "₦", code: "NGN" },
-  "Kenya": { symbol: "KSh", code: "KES" }, "Ghana": { symbol: "₵", code: "GHS" },
+  "Kenya": { symbol: "KSh", code: "KES" }, "Ghana": { symbol: "", code: "GHS" },
   "Ethiopia": { symbol: "Br", code: "ETB" }, "Tanzania": { symbol: "TSh", code: "TZS" },
   "Uganda": { symbol: "USh", code: "UGX" }, "Rwanda": { symbol: "RF", code: "RWF" },
   "Senegal": { symbol: "CFA", code: "XOF" }, "Cameroon": { symbol: "FCFA", code: "XAF" },
@@ -48,7 +48,7 @@ const currencyMap: Record<string, { symbol: string; code: string }> = {
   "Austria": { symbol: "€", code: "EUR" }, "Portugal": { symbol: "€", code: "EUR" },
   "Greece": { symbol: "€", code: "EUR" }, "Finland": { symbol: "€", code: "EUR" },
   "Kazakhstan": { symbol: "₸", code: "KZT" }, "Uzbekistan": { symbol: "лв", code: "UZS" },
-  "Azerbaijan": { symbol: "₼", code: "AZN" }, "Georgia": { symbol: "₾", code: "GEL" },
+  "Azerbaijan": { symbol: "", code: "AZN" }, "Georgia": { symbol: "₾", code: "GEL" },
   "Armenia": { symbol: "֏", code: "AMD" },
   "Brazil": { symbol: "R$", code: "BRL" }, "Argentina": { symbol: "$", code: "ARS" },
   "Mexico": { symbol: "$", code: "MXN" }, "Colombia": { symbol: "$", code: "COP" },
@@ -122,7 +122,7 @@ const polishDescriptionAI = (text: string) => {
       polished += `• ${line.trim()}\n`;
     });
   }
-  polished += "\n📦 **Note:** Item is exactly as described. Feel free to message with any questions!";
+  polished += "\n **Note:** Item is exactly as described. Feel free to message with any questions!";
   return polished;
 };
 
@@ -314,9 +314,10 @@ export default function GeneratePage() {
       });
       setStream(mediaStream);
 
+      // Hidden video element for canvas processing
       const videoEl = document.createElement('video');
       videoEl.srcObject = mediaStream;
-      videoEl.muted = true; // Prevent audio feedback
+      videoEl.muted = true; 
       videoEl.play();
 
       const canvas = document.createElement('canvas');
@@ -362,7 +363,6 @@ export default function GeneratePage() {
       const drawFrame = () => {
         if (!isRecordingRef.current || !ctx) return;
         
-        // Set canvas size dynamically based on video resolution
         if (videoEl.videoWidth > 0 && canvas.width !== videoEl.videoWidth) {
           canvas.width = videoEl.videoWidth;
           canvas.height = videoEl.videoHeight;
@@ -441,7 +441,7 @@ export default function GeneratePage() {
         toast.success("✨ Description polished to look highly professional!");
       }
       setIsPolishing(false);
-    }, 600); // Fake 600ms delay to make it feel like "thinking" AI
+    }, 600); 
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -623,31 +623,52 @@ export default function GeneratePage() {
             )}
           </div>
 
-          {/* 🛡️ NABJO LIVE CAPTURE UI */}
+          {/* ️ NABJO LIVE CAPTURE UI */}
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-2 flex items-center gap-2">
-              <span className="text-green-400">🎥</span> Nabjo Live Capture (Highly Recommended)
+              <span className="text-green-400"></span> Nabjo Live Capture (Highly Recommended)
               <span className="text-xs text-gray-500 font-normal">Burns a live watermark to prevent scams</span>
             </label>
             
             {!videoPreview ? (
               isRecording ? (
-                <div className="w-full bg-black rounded-xl overflow-hidden border-2 border-red-500 relative aspect-video flex flex-col items-center justify-center">
-                  <div className="absolute top-4 left-4 z-10 bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-full animate-pulse flex items-center gap-2">
-                    <span className="w-2 h-2 bg-white rounded-full"></span> RECORDING LIVE
+                <div className="w-full bg-black rounded-xl overflow-hidden border-2 border-red-500 relative aspect-video">
+                  {/* Live Camera Preview */}
+                  <video 
+                    autoPlay 
+                    playsInline 
+                    muted 
+                    ref={(video) => {
+                      if (video && stream) {
+                        video.srcObject = stream;
+                      }
+                    }}
+                    className="w-full h-full object-cover"
+                  />
+                  
+                  {/* Recording Badge */}
+                  <div className="absolute top-4 left-4 z-10 bg-red-600/90 backdrop-blur-md text-white text-xs font-bold px-3 py-1.5 rounded-full animate-pulse flex items-center gap-2 shadow-lg">
+                    <span className="w-2 h-2 bg-white rounded-full"></span> 
+                    RECORDING LIVE
                   </div>
-                  <div className="absolute bottom-4 left-0 right-0 text-center px-4 z-10">
-                    <p className="text-yellow-400 font-bold text-sm md:text-base bg-black/60 inline-block px-3 py-1 rounded-lg backdrop-blur-sm border border-yellow-500/30">
+                  
+                  {/* Safety Check Banner */}
+                  <div className="absolute bottom-20 left-0 right-0 text-center px-4 z-10 pointer-events-none">
+                    <p className="text-yellow-400 font-bold text-sm md:text-base bg-black/70 inline-block px-4 py-2 rounded-lg backdrop-blur-sm border border-yellow-500/50 shadow-lg">
                       ⚠️ SAFETY CHECK: Show the item and hold up 3 fingers!
                     </p>
                   </div>
-                  <button 
-                    type="button"
-                    onClick={stopRecording}
-                    className="z-20 w-16 h-16 bg-red-600 rounded-full border-4 border-white flex items-center justify-center hover:bg-red-700 transition shadow-lg mt-8"
-                  >
-                    <div className="w-6 h-6 bg-white rounded-sm"></div>
-                  </button>
+                  
+                  {/* Stop Button */}
+                  <div className="absolute bottom-6 left-0 right-0 flex justify-center z-20">
+                    <button 
+                      type="button"
+                      onClick={stopRecording}
+                      className="w-16 h-16 bg-red-600 rounded-full border-4 border-white flex items-center justify-center hover:bg-red-700 hover:scale-105 transition shadow-2xl"
+                    >
+                      <div className="w-6 h-6 bg-white rounded-sm"></div>
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <button 
@@ -778,7 +799,7 @@ export default function GeneratePage() {
                   <label className="block text-sm font-medium text-gray-400 mb-2">Shipping Policy 🛡️</label>
                   <select value={shippingPolicy} onChange={(e) => setShippingPolicy(e.target.value)} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-purple-500">
                     <option value="local_pickup">📍 Local Pickup Only (Safest)</option>
-                    <option value="domestic">🇺🇸 Domestic Shipping Only</option>
+                    <option value="domestic">🇸 Domestic Shipping Only</option>
                     <option value="worldwide">🌍 Worldwide Shipping</option>
                   </select>
                   <p className="text-xs text-gray-500 mt-2">⚠️ For high-value auctions, Local Pickup is highly recommended to prevent fraud.</p>
