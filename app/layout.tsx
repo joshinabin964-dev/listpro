@@ -9,6 +9,12 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: 'Nabjo - The Global Marketplace for Everything',
   description: 'Buy, sell, and trade anything, anywhere. Nabjo is the global marketplace connecting people worldwide.',
+  
+  // 🛡️ GOOGLE SEARCH CONSOLE VERIFICATION
+  verification: {
+    google: 'C9-b6l7fK_-byzHo_0_bCmIio0lStlwoiwZ2cahTqtQ',
+  },
+  // 👆 END OF VERIFICATION 👆
 }
 
 export default function RootLayout({
