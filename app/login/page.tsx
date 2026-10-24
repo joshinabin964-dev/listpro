@@ -6,10 +6,8 @@ import toast from "react-hot-toast";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [verifying, setVerifying] = useState(false);
+  const [linkSent, setLinkSent] = useState(false);
   const router = useRouter();
 
   const handleGoogleLogin = async () => {
@@ -22,46 +20,28 @@ export default function LoginPage() {
     setLoading(false);
   };
 
-  const handleSendOtp = async (e: React.FormEvent) => {
+  const handleMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.includes('@')) return toast.error("Please enter a valid email.");
     setLoading(true);
+    
     try {
-      const res = await fetch('/api/auth/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.trim().toLowerCase(),
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: `${window.location.origin}/dashboard`,
+        },
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      toast.success("6-digit code sent to your email!");
-      setOtpSent(true);
+      
+      if (error) throw error;
+      
+      toast.success("Sign-in link sent! Check your inbox.");
+      setLinkSent(true);
     } catch (error: any) {
-      toast.error(error.message || "Failed to send code.");
+      toast.error(error.message || "Failed to send link.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (otp.length !== 6) return toast.error("Please enter the 6-digit code.");
-    setVerifying(true);
-    try {
-      const res = await fetch('/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code: otp }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      
-      toast.success("Verified! Logging you in...");
-      window.location.href = data.redirectUrl;
-    } catch (error: any) {
-      toast.error(error.message || "Invalid code.");
-    } finally {
-      setVerifying(false);
     }
   };
 
@@ -73,7 +53,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Nabjo</h1>
           <p className="text-gray-400 text-sm">
-            {otpSent ? "Enter the 6-digit code sent to your email." : "Sign in securely to the safest marketplace."}
+            {linkSent ? "Check your email and click the link to login." : "Sign in securely to the safest marketplace."}
           </p>
         </div>
         
@@ -84,41 +64,33 @@ export default function LoginPage() {
 
         <div className="relative flex py-2 items-center mb-6">
           <div className="flex-grow border-t border-gray-700"></div>
-          <span className="flex-shrink mx-4 text-gray-500 text-xs">OR SECURE EMAIL OTP</span>
+          <span className="flex-shrink mx-4 text-gray-500 text-xs">OR SECURE EMAIL LOGIN</span>
           <div className="flex-grow border-t border-gray-700"></div>
         </div>
 
-        {!otpSent ? (
-          <form onSubmit={handleSendOtp} className="space-y-5">
+        {!linkSent ? (
+          <form onSubmit={handleMagicLink} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-1.5">Email Address</label>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full p-3.5 bg-gray-950 border border-gray-800 rounded-xl text-white focus:outline-none focus:border-blue-500 transition-all text-base" placeholder="you@example.com" />
+              <p className="text-xs text-gray-500 mt-2">We will send a secure sign-in link. One click to login!</p>
             </div>
             <button type="submit" disabled={loading} className="w-full p-3.5 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold rounded-xl transition-all disabled:opacity-70">
-              {loading ? "Sending Code..." : "Send 6-Digit Code"}
+              {loading ? "Sending Link..." : "Send Sign-In Link"}
             </button>
           </form>
         ) : (
-          <form onSubmit={handleVerifyOtp} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1.5">Enter 6-Digit Code</label>
-              <input 
-                type="text" 
-                value={otp} 
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} 
-                required 
-                maxLength={6}
-                className="w-full p-3.5 bg-gray-950 border border-gray-800 rounded-xl text-white text-center text-2xl tracking-[0.5em] font-mono focus:outline-none focus:border-blue-500 transition-all" 
-                placeholder="000000" 
-              />
+          <div className="space-y-5 text-center py-4">
+            <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
             </div>
-            <button type="submit" disabled={verifying} className="w-full p-3.5 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-bold rounded-xl transition-all disabled:opacity-70">
-              {verifying ? "Verifying..." : "Verify & Login"}
-            </button>
-            <button type="button" onClick={() => { setOtpSent(false); setOtp(""); }} className="w-full p-3.5 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold rounded-xl transition-all text-sm">
+            <h3 className="text-xl font-bold text-white">Check your inbox!</h3>
+            <p className="text-gray-400 text-sm">We sent a sign-in link to <span className="text-white font-bold">{email}</span>. Click it to log in instantly.</p>
+            <p className="text-xs text-gray-500">Didn't get it? Check your spam folder.</p>
+            <button onClick={() => { setLinkSent(false); setEmail(""); }} className="w-full p-3.5 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold rounded-xl transition-all text-sm mt-4">
               ← Use a different email
             </button>
-          </form>
+          </div>
         )}
       </div>
     </main>
