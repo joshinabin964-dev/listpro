@@ -9,76 +9,68 @@ const supabaseAdmin = createClient(
 export async function POST(request: Request) {
   try {
     const { email, code } = await request.json();
+    
+    // Clean inputs to prevent mismatch errors
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanCode = String(code).trim();
 
-    if (!email || !code) {
-      return NextResponse.json({ error: 'Missing email or code' }, { status: 400 });
-    }
-
-    // Find the OTP code
-    const { data: otpData, error: otpError } = await supabaseAdmin
+    // Find the latest unused OTP that matches exactly
+    const { data, error } = await supabaseAdmin
       .from('otp_codes')
       .select('*')
-      .eq('email', email)
-      .eq('code', code)
+      .eq('email', cleanEmail)
+      .eq('code', cleanCode)
       .eq('used', false)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .single();
 
-    if (otpError || !otpData) {
-      return NextResponse.json({ error: 'Invalid code' }, { status: 400 });
+    if (error || !data) {
+      return NextResponse.json({ error: 'Invalid code. Please check and try again.' }, { status: 400 });
     }
 
     // Check if expired
-    if (new Date(otpData.expires_at) < new Date()) {
-      return NextResponse.json({ error: 'Code expired' }, { status: 400 });
+    if (new Date(data.expires_at) < new Date()) {
+      return NextResponse.json({ error: 'Code expired. Please request a new one.' }, { status: 400 });
     }
 
     // Mark as used
-    await supabaseAdmin
-      .from('otp_codes')
-      .update({ used: true })
-      .eq('id', otpData.id);
+    await supabaseAdmin.from('otp_codes').update({ used: true }).eq('id', data.id);
 
     // Check if user exists, if not create them
-    const { data: existingUser } = await supabaseAdmin.auth.admin.getUserByEmail(email);
+    let { data: user } = await supabaseAdmin.auth.admin.getUserByEmail(cleanEmail);
     
-    if (!existingUser.user) {
-      // Create new user with a random password
-      const randomPassword = Math.random().toString(36).slice(-16);
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email,
-        password: randomPassword,
-        email_confirm: true,
+    if (!user.user) {
+      const randomPass = Math.random().toString(36).slice(-16);
+      const { data: newUser } = await supabaseAdmin.auth.admin.createUser({
+        email: cleanEmail,
+        password: randomPass,
+        email_confirm: true
       });
-
-      if (createError) throw createError;
-
-      // Create profile for new user
-      await supabaseAdmin
-        .from('profiles')
-        .insert({
-          id: newUser.user.id,
-          email: email,
-          created_at: new Date().toISOString(),
+      if (newUser.user) {
+        await supabaseAdmin.from('profiles').upsert({ 
+          id: newUser.user.id, 
+          email: cleanEmail, 
+          created_at: new Date().toISOString() 
         });
+      }
     }
 
-    // Generate a magic link for the user to sign in
-    const { data: signInData, error: signInError } = await supabaseAdmin.auth.admin.generateLink({
+    // Generate magic link to log them in automatically
+    const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
       type: 'magiclink',
-      email,
-      options: {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/dashboard`,
-      },
+      email: cleanEmail,
+      options: { 
+        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard` 
+      }
     });
-
-    if (signInError) throw signInError;
 
     return NextResponse.json({ 
       success: true, 
-      redirectUrl: signInData.properties.action_link 
+      redirectUrl: linkData.properties.action_link 
     });
   } catch (error: any) {
-    console.error('Verify OTP error:', error);
+    console.error(error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
