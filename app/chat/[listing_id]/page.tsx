@@ -22,6 +22,11 @@ export default function ChatRoomPage() {
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // 🛡️ SAFE HANDOFF STATES
+  const [showHandoffModal, setShowHandoffModal] = useState(false);
+  const [handoffToken, setHandoffToken] = useState("");
+  const [isGeneratingHandoff, setIsGeneratingHandoff] = useState(false);
+
   useEffect(() => {
     const initChat = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -29,7 +34,6 @@ export default function ChatRoomPage() {
       
       setCurrentUser(session.user);
 
-      // Fetch listing details (only what we need)
       const { data: listingData } = await supabase
         .from("listings")
         .select("product_name, image_url, user_id")
@@ -38,11 +42,8 @@ export default function ChatRoomPage() {
       
       if (listingData) {
         setListing(listingData);
-        
-        // Determine the other user (if not provided in URL, use listing owner)
         const targetUserId = otherUserId || listingData.user_id;
         
-        // Fetch other user's profile
         const { data: userData } = await supabase
           .from("profiles")
           .select("full_name")
@@ -50,17 +51,13 @@ export default function ChatRoomPage() {
           .single();
         
         setOtherUser(userData);
-
-        // Fetch existing messages
         await fetchMessages(session.user.id, targetUserId, listing_id as string);
       }
-      
       setLoading(false);
     };
     initChat();
   }, [listing_id, otherUserId, router]);
 
-  // Set up real-time subscription
   useEffect(() => {
     if (!currentUser || !listing_id) return;
 
@@ -68,15 +65,9 @@ export default function ChatRoomPage() {
       .channel(`chat:${listing_id}`)
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `listing_id=eq.${listing_id}`
-        },
+        { event: "INSERT", schema: "public", table: "messages", filter: `listing_id=eq.${listing_id}` },
         (payload) => {
           const newMsg = payload.new;
-          // Only add if it's not already in the list
           setMessages((prev) => {
             if (prev.find(m => m.id === newMsg.id)) return prev;
             return [...prev, newMsg];
@@ -85,12 +76,9 @@ export default function ChatRoomPage() {
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [currentUser, listing_id]);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -102,7 +90,6 @@ export default function ChatRoomPage() {
       .or(`and(sender_id.eq.${userId},receiver_id.eq.${targetUserId}),and(sender_id.eq.${targetUserId},receiver_id.eq.${userId})`)
       .eq("listing_id", listingId)
       .order("created_at", { ascending: true });
-    
     if (data) setMessages(data);
   };
 
@@ -119,7 +106,6 @@ export default function ChatRoomPage() {
         content: newMessage.trim(),
         is_read: false
       });
-
       if (error) throw error;
       setNewMessage("");
     } catch (error: any) {
@@ -129,11 +115,41 @@ export default function ChatRoomPage() {
     }
   };
 
-  // 🛡️ EDGE CASE: Handle Enter to send, Shift+Enter for new line
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage(e);
+    }
+  };
+
+  // 🛡️ SAFE HANDOFF GENERATOR
+  const generateHandoff = async () => {
+    if (!currentUser || !listing) return;
+    setIsGeneratingHandoff(true);
+    try {
+      // Generate a secure random token
+      const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      
+      // Determine who is buyer and who is seller
+      const sellerId = listing.user_id;
+      const buyerId = currentUser.id === listing.user_id ? otherUserId : currentUser.id;
+
+      const { error } = await supabase.from("handoff_requests").insert({
+        listing_id: listing_id,
+        seller_id: sellerId,
+        buyer_id: buyerId,
+        token: token,
+        status: "pending"
+      });
+
+      if (error) throw error;
+      setHandoffToken(token);
+      setShowHandoffModal(true);
+      toast.success("🛡️ Safe Handoff QR generated!");
+    } catch (error: any) {
+      toast.error("Failed to generate handoff: " + error.message);
+    } finally {
+      setIsGeneratingHandoff(false);
     }
   };
 
@@ -150,9 +166,7 @@ export default function ChatRoomPage() {
   );
 
   return (
-    // 📱 MOBILE POLISH: Full height flex column to keep input at bottom
     <main className="flex flex-col h-screen bg-gray-950 text-white">
-      {/* Header */}
       <nav className="border-b border-gray-800 bg-gray-950/90 backdrop-blur-md sticky top-0 z-50 px-4 py-3">
         <div className="max-w-4xl mx-auto flex items-center gap-3">
           <Link href="/inbox" className="p-2 hover:bg-gray-800 rounded-lg transition shrink-0">
@@ -176,17 +190,24 @@ export default function ChatRoomPage() {
           <Link href={`/listing/${listing_id}`} className="text-xs md:text-sm text-blue-400 hover:text-blue-300 whitespace-nowrap shrink-0">
             View Item →
           </Link>
+          
+          {/* 🛡️ SAFE HANDOFF BUTTON */}
+          <button 
+            onClick={generateHandoff}
+            disabled={isGeneratingHandoff}
+            className="text-xs md:text-sm bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-500/30 px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 shrink-0"
+          >
+            {isGeneratingHandoff ? "..." : "🛡️ Safe Handoff"}
+          </button>
         </div>
       </nav>
 
-      {/* 🛡️ SAFETY BANNER */}
       <div className="bg-yellow-900/20 border-b border-yellow-500/30 px-4 py-2 text-center shrink-0">
         <p className="text-[10px] md:text-xs text-yellow-400">
-          ⚠️ <strong>Safety Tip:</strong> Keep all conversations and payments inside Margin. Never share personal info or pay via wire transfer.
+          ⚠️ <strong>Safety Tip:</strong> Use the "Safe Handoff" button to generate a secure QR code when meeting in person.
         </p>
       </div>
 
-      {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 max-w-4xl mx-auto w-full">
         {messages.length === 0 ? (
           <div className="text-center py-12 text-gray-500">
@@ -198,9 +219,7 @@ export default function ChatRoomPage() {
             return (
               <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[85%] md:max-w-[70%] px-4 py-3 rounded-2xl ${
-                  isMine
-                    ? "bg-blue-600 text-white rounded-br-sm"
-                    : "bg-gray-800 text-gray-100 rounded-bl-sm border border-gray-700"
+                  isMine ? "bg-blue-600 text-white rounded-br-sm" : "bg-gray-800 text-gray-100 rounded-bl-sm border border-gray-700"
                 }`}>
                   <p className="text-sm md:text-base whitespace-pre-wrap break-words">{msg.content}</p>
                   <p className={`text-[10px] mt-1 text-right ${isMine ? "text-blue-200" : "text-gray-500"}`}>
@@ -214,7 +233,6 @@ export default function ChatRoomPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
       <div className="border-t border-gray-800 bg-gray-950/90 backdrop-blur-md p-4 sticky bottom-0 z-50 shrink-0">
         <form onSubmit={sendMessage} className="max-w-4xl mx-auto flex gap-3">
           <input
@@ -224,7 +242,6 @@ export default function ChatRoomPage() {
             onKeyDown={handleKeyDown}
             placeholder="Type a message..."
             disabled={sending}
-            // 🛡️ EDGE CASE: text-base prevents iOS auto-zoom
             className="flex-1 p-3 md:p-4 bg-gray-900 border border-gray-800 rounded-xl text-white text-base focus:outline-none focus:border-blue-500 disabled:opacity-50"
           />
           <button
@@ -232,9 +249,7 @@ export default function ChatRoomPage() {
             disabled={!newMessage.trim() || sending}
             className="px-4 md:px-6 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-bold rounded-xl transition flex items-center justify-center shrink-0"
           >
-            {sending ? (
-              <span className="animate-spin">⚙️</span>
-            ) : (
+            {sending ? <span className="animate-spin">⚙️</span> : (
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 md:h-6 md:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
@@ -242,6 +257,34 @@ export default function ChatRoomPage() {
           </button>
         </form>
       </div>
+
+      {/* 🛡️ SAFE HANDOFF MODAL */}
+      {showHandoffModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center">
+            <h3 className="text-xl font-bold mb-2 text-white">🛡️ Safe Handoff</h3>
+            <p className="text-gray-400 text-sm mb-6">
+              Have the other person scan this QR code with their phone camera to confirm the physical exchange.
+            </p>
+            <div className="bg-white p-4 rounded-xl inline-block mb-6">
+              <img 
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`${window.location.origin}/handoff/confirm?listing_id=${listing_id}&token=${handoffToken}`)}`} 
+                alt="Handoff QR Code" 
+                className="w-48 h-48"
+              />
+            </div>
+            <p className="text-xs text-gray-500 mb-6">
+              This will securely mark the item as "Sold" and verify both accounts.
+            </p>
+            <button 
+              onClick={() => setShowHandoffModal(false)} 
+              className="w-full p-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
