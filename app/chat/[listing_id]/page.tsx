@@ -18,11 +18,9 @@ export default function ChatRoomPage() {
   const [listing, setListing] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
-  // 🛡️ EDGE CASE: Prevent double-sends
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 🛡️ SAFE HANDOFF STATES
   const [showHandoffModal, setShowHandoffModal] = useState(false);
   const [handoffToken, setHandoffToken] = useState("");
   const [isGeneratingHandoff, setIsGeneratingHandoff] = useState(false);
@@ -93,9 +91,24 @@ export default function ChatRoomPage() {
     if (data) setMessages(data);
   };
 
+  // 🛡️ SCAM KEYWORD BLOCKER
+  const scamKeywords = ["whatsapp", "telegram", "zelle", "cashapp", "venmo", "gift card", "paypal", "crypto", "bitcoin", "wire transfer"];
+
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !currentUser || !otherUserId || sending) return;
+
+    // Check for scam keywords (case-insensitive)
+    const lowerMsg = newMessage.toLowerCase();
+    const foundKeyword = scamKeywords.find(keyword => lowerMsg.includes(keyword));
+
+    if (foundKeyword) {
+      toast.error(`⚠️ SAFETY ALERT: Mentioning "${foundKeyword}" is not allowed. Scammers use outside apps to steal money. Keep all chats and handoffs on Nabjo!`, {
+        duration: 6000,
+        icon: '🛡️'
+      });
+      return; // BLOCK THE MESSAGE FROM SENDING
+    }
 
     setSending(true);
     try {
@@ -122,15 +135,11 @@ export default function ChatRoomPage() {
     }
   };
 
-  // 🛡️ SAFE HANDOFF GENERATOR
   const generateHandoff = async () => {
     if (!currentUser || !listing) return;
     setIsGeneratingHandoff(true);
     try {
-      // Generate a secure random token
       const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-      
-      // Determine who is buyer and who is seller
       const sellerId = listing.user_id;
       const buyerId = currentUser.id === listing.user_id ? otherUserId : currentUser.id;
 
@@ -191,7 +200,6 @@ export default function ChatRoomPage() {
             View Item →
           </Link>
           
-          {/* 🛡️ SAFE HANDOFF BUTTON */}
           <button 
             onClick={generateHandoff}
             disabled={isGeneratingHandoff}
@@ -204,7 +212,7 @@ export default function ChatRoomPage() {
 
       <div className="bg-yellow-900/20 border-b border-yellow-500/30 px-4 py-2 text-center shrink-0">
         <p className="text-[10px] md:text-xs text-yellow-400">
-          ⚠️ <strong>Safety Tip:</strong> Use the "Safe Handoff" button to generate a secure QR code when meeting in person.
+          ⚠️ <strong>Safety Tip:</strong> Keep all conversations on Nabjo. Never share personal info or pay via outside apps.
         </p>
       </div>
 
@@ -258,7 +266,6 @@ export default function ChatRoomPage() {
         </form>
       </div>
 
-      {/* 🛡️ SAFE HANDOFF MODAL */}
       {showHandoffModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center">
