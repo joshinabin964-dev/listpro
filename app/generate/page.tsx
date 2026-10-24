@@ -160,6 +160,10 @@ export default function GeneratePage() {
   const [startingBid, setStartingBid] = useState("");
   const [auctionDuration, setAuctionDuration] = useState("24h");
   const [shippingPolicy, setShippingPolicy] = useState("local_pickup");
+  
+  // 🚨 NEW: Shipping Risk Acknowledgement State
+  const [shippingRiskAccepted, setShippingRiskAccepted] = useState(false);
+  
   const [userPlan, setUserPlan] = useState("free");
 
   // 🧠 STRUCTURED DATA & 99.99% ACCURATE GAUGE STATES
@@ -314,7 +318,6 @@ export default function GeneratePage() {
       });
       setStream(mediaStream);
 
-      // Hidden video element for canvas processing
       const videoEl = document.createElement('video');
       videoEl.srcObject = mediaStream;
       videoEl.muted = true; 
@@ -370,7 +373,6 @@ export default function GeneratePage() {
 
         ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
         
-        // Draw Watermark Background (bottom right, responsive)
         const padding = 20;
         const boxWidth = Math.min(340, canvas.width * 0.4);
         const boxHeight = 80;
@@ -380,7 +382,7 @@ export default function GeneratePage() {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
         ctx.fillRect(x, y, boxWidth, boxHeight);
         
-        ctx.fillStyle = '#4ade80'; // green-400
+        ctx.fillStyle = '#4ade80';
         ctx.font = `bold ${Math.max(14, canvas.width * 0.02)}px sans-serif`;
         ctx.fillText('✅ NABJO VERIFIED • LIVE', x + 15, y + 35);
         
@@ -458,6 +460,13 @@ export default function GeneratePage() {
       toast.error("Please enter a Starting Bid.");
       return;
     }
+    
+    // 🚨 NEW: Enforce Shipping Risk Acknowledgement
+    if ((shippingPolicy === 'domestic' || shippingPolicy === 'worldwide') && !shippingRiskAccepted) {
+      toast.error("⚠️ Please acknowledge the shipping risk disclaimer to continue.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -547,7 +556,7 @@ export default function GeneratePage() {
         starting_bid: listingType === 'auction' && userPlan === 'pro' ? (parseFloat(startingBid) || 0) : 0,
         current_bid: listingType === 'auction' && userPlan === 'pro' ? (parseFloat(startingBid) || 0) : 0,
         auction_end_time: auctionEndTime,
-        shipping_policy: listingType === 'auction' ? shippingPolicy : 'domestic',
+        shipping_policy: shippingPolicy, // 🚨 UPDATED: Applies to all listing types now
         has_video_proof: !!videoUrl,
         video_url: videoUrl,
         category: category,
@@ -623,17 +632,16 @@ export default function GeneratePage() {
             )}
           </div>
 
-          {/* ️ NABJO LIVE CAPTURE UI */}
+          {/* 🛡️ NABJO LIVE CAPTURE UI */}
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-2 flex items-center gap-2">
-              <span className="text-green-400"></span> Nabjo Live Capture (Highly Recommended)
+              <span className="text-green-400">🎥</span> Nabjo Live Capture (Highly Recommended)
               <span className="text-xs text-gray-500 font-normal">Burns a live watermark to prevent scams</span>
             </label>
             
             {!videoPreview ? (
               isRecording ? (
                 <div className="w-full bg-black rounded-xl overflow-hidden border-2 border-red-500 relative aspect-video">
-                  {/* Live Camera Preview */}
                   <video 
                     autoPlay 
                     playsInline 
@@ -645,21 +653,15 @@ export default function GeneratePage() {
                     }}
                     className="w-full h-full object-cover"
                   />
-                  
-                  {/* Recording Badge */}
                   <div className="absolute top-4 left-4 z-10 bg-red-600/90 backdrop-blur-md text-white text-xs font-bold px-3 py-1.5 rounded-full animate-pulse flex items-center gap-2 shadow-lg">
                     <span className="w-2 h-2 bg-white rounded-full"></span> 
                     RECORDING LIVE
                   </div>
-                  
-                  {/* Safety Check Banner */}
                   <div className="absolute bottom-20 left-0 right-0 text-center px-4 z-10 pointer-events-none">
                     <p className="text-yellow-400 font-bold text-sm md:text-base bg-black/70 inline-block px-4 py-2 rounded-lg backdrop-blur-sm border border-yellow-500/50 shadow-lg">
                       ⚠️ SAFETY CHECK: Show the item and hold up 3 fingers!
                     </p>
                   </div>
-                  
-                  {/* Stop Button */}
                   <div className="absolute bottom-6 left-0 right-0 flex justify-center z-20">
                     <button 
                       type="button"
@@ -802,7 +804,31 @@ export default function GeneratePage() {
                     <option value="domestic">🇸 Domestic Shipping Only</option>
                     <option value="worldwide">🌍 Worldwide Shipping</option>
                   </select>
-                  <p className="text-xs text-gray-500 mt-2">⚠️ For high-value auctions, Local Pickup is highly recommended to prevent fraud.</p>
+                  
+                  {/* 🚨 NEW: SHIPPING RISK DISCLAIMER */}
+                  {(shippingPolicy === 'domestic' || shippingPolicy === 'worldwide') && (
+                    <div className="mt-4 p-4 bg-red-900/20 border border-red-500/50 rounded-xl flex items-start gap-3 animate-pulse">
+                      <svg className="w-6 h-6 text-red-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-red-400 text-sm mb-1">⚠️ Seller-Managed Shipping Warning</h4>
+                        <p className="text-xs text-gray-300 leading-relaxed mb-3">
+                          By selecting this option, you acknowledge that <strong>Nabjo is not responsible</strong> for shipping logistics, lost packages, payment disputes, or fraud. You are managing this transaction entirely at your own risk. We strongly recommend using tracked shipping and secure payment methods.
+                        </p>
+                        <label className="flex items-start gap-2 cursor-pointer group">
+                          <input 
+                            type="checkbox" 
+                            checked={shippingRiskAccepted}
+                            onChange={(e) => setShippingRiskAccepted(e.target.checked)}
+                            required 
+                            className="mt-1 w-4 h-4 rounded border-gray-600 text-red-500 focus:ring-red-500 bg-gray-800" 
+                          />
+                          <span className="text-xs text-gray-400 font-bold group-hover:text-gray-300 transition">I understand and accept full responsibility for shipping risks.</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
