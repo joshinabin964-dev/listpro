@@ -7,13 +7,11 @@ import toast from "react-hot-toast";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
-  
   const [loading, setLoading] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
-  
+  const [verifying, setVerifying] = useState(false);
   const router = useRouter();
 
-  // 🆕 GOOGLE LOGIN HANDLER
   const handleGoogleLogin = async () => {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
@@ -28,7 +26,6 @@ export default function LoginPage() {
     }
   };
 
-  // 🆕 EMAIL OTP: SEND CODE
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !email.includes('@')) {
@@ -37,15 +34,14 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email,
-        options: {
-          shouldCreateUser: true, // Automatically creates account if new
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        }
+      const res = await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
       });
-      if (error) throw error;
-      toast.success("📧 6-digit code sent! Check your inbox (and spam).");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(" 6-digit code sent to your email!");
       setOtpSent(true);
     } catch (error: any) {
       toast.error(error.message || "Failed to send code.");
@@ -54,27 +50,29 @@ export default function LoginPage() {
     }
   };
 
-  // 🆕 EMAIL OTP: VERIFY CODE
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!otp || otp.length !== 6) {
       toast.error("Please enter the 6-digit code.");
       return;
     }
-    setLoading(true);
+    setVerifying(true);
     try {
-      const { error } = await supabase.auth.verifyOtp({
-        email: email,
-        token: otp,
-        type: 'email',
+      const res = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code: otp }),
       });
-      if (error) throw error;
-      toast.success("🎉 Email verified! Welcome to Nabjo.");
-      router.push("/dashboard");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      
+      toast.success("🎉 Verified! Redirecting to Nabjo...");
+      // Redirect to the magic link to complete sign-in
+      window.location.href = data.redirectUrl;
     } catch (error: any) {
-      toast.error("Invalid code. Please try again.");
+      toast.error(error.message || "Invalid code. Please try again.");
     } finally {
-      setLoading(false);
+      setVerifying(false);
     }
   };
 
@@ -114,7 +112,6 @@ export default function LoginPage() {
         </div>
 
         {!otpSent ? (
-          // STEP 1: ENTER EMAIL
           <form onSubmit={handleSendOtp} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-1.5">Email Address</label>
@@ -126,14 +123,13 @@ export default function LoginPage() {
                 className="w-full p-3.5 bg-gray-950 border border-gray-800 rounded-xl text-white focus:outline-none focus:border-blue-500 transition-all text-base" 
                 placeholder="you@example.com" 
               />
-              <p className="text-xs text-gray-500 mt-2">We will send a secure 6-digit code to this email. No password needed!</p>
+              <p className="text-xs text-gray-500 mt-2">We'll send a secure 6-digit code to this email.</p>
             </div>
             <button type="submit" disabled={loading} className="w-full p-3.5 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold rounded-xl transition-all disabled:opacity-70 flex items-center justify-center gap-2">
               {loading ? "Sending Code..." : "Send 6-Digit Code"}
             </button>
           </form>
         ) : (
-          // STEP 2: ENTER OTP
           <form onSubmit={handleVerifyOtp} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-1.5">Enter 6-Digit Code</label>
@@ -146,13 +142,13 @@ export default function LoginPage() {
                 className="w-full p-3.5 bg-gray-950 border border-gray-800 rounded-xl text-white text-center text-2xl tracking-[0.5em] font-mono focus:outline-none focus:border-blue-500 transition-all" 
                 placeholder="000000" 
               />
-              <p className="text-xs text-gray-500 mt-2 text-center">Didn't get it? Check your spam folder.</p>
+              <p className="text-xs text-gray-500 mt-2 text-center">Check your inbox (and spam folder).</p>
             </div>
-            <button type="submit" disabled={loading} className="w-full p-3.5 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-bold rounded-xl transition-all disabled:opacity-70 flex items-center justify-center gap-2">
-              {loading ? "Verifying..." : "Verify & Login"}
+            <button type="submit" disabled={verifying} className="w-full p-3.5 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-bold rounded-xl transition-all disabled:opacity-70 flex items-center justify-center gap-2">
+              {verifying ? "Verifying..." : "Verify & Login"}
             </button>
             <button type="button" onClick={() => { setOtpSent(false); setOtp(""); }} className="w-full p-3.5 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold rounded-xl transition-all text-sm">
-              ← Change Email Address
+              ← Use a different email
             </button>
           </form>
         )}
