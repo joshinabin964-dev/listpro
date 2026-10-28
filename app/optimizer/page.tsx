@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 
 export default function OptimizerPage() {
   const [credits, setCredits] = useState(0);
+  const [plan, setPlan] = useState("free"); // 🆕 Track plan for PRO badge
   const [file, setFile] = useState<File | null>(null);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({
@@ -16,7 +17,7 @@ export default function OptimizerPage() {
   const [tone, setTone] = useState("professional");
   const [keywords, setKeywords] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState(0); // NEW: Progress state
+  const [progress, setProgress] = useState(0);
   const [processedData, setProcessedData] = useState<any[]>([]);
   
   const [presets, setPresets] = useState<any[]>([]);
@@ -32,8 +33,12 @@ export default function OptimizerPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/login"); return; }
       
-      const { data: profile } = await supabase.from("profiles").select("credits").eq("id", session.user.id).single();
-      if (profile) setCredits(profile.credits || 0);
+      // 🆕 Fetch BOTH credits and plan
+      const { data: profile } = await supabase.from("profiles").select("credits, plan").eq("id", session.user.id).single();
+      if (profile) {
+        setCredits(profile.credits || 0);
+        setPlan(profile.plan || "free");
+      }
 
       const { data: presetData } = await supabase.from("presets").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false });
       if (presetData) setPresets(presetData);
@@ -140,12 +145,18 @@ export default function OptimizerPage() {
   const handleProcess = async () => {
     if (!file) { toast.error("Please upload a CSV file first."); return; }
     if (!columnMapping.productName) { toast.error("Please map the 'Product Name' column."); return; }
-    if (credits < 1) { toast.error("Insufficient credits! Please top up."); router.push("/pricing"); return; }
+    
+    // 🛡️ CREDIT CHECK
+    if (credits < 1) { 
+      toast.error("⚡ Insufficient credits! Please upgrade or top up."); 
+      router.push("/pricing"); 
+      return; 
+    }
 
     setIsProcessing(true);
     setProgress(0);
     setProcessedData([]);
-    toast.loading("Starting processing...");
+    const loadingToast = toast.loading("Starting processing...");
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -153,13 +164,12 @@ export default function OptimizerPage() {
 
       const text = await file.text();
       const { data: rawData } = parseCSV(text);
-      if (rawData.length === 0) { toast.error("CSV file is empty."); setIsProcessing(false); toast.dismiss(); return; }
+      if (rawData.length === 0) { toast.error("CSV file is empty."); setIsProcessing(false); toast.dismiss(loadingToast); return; }
 
       const keywordList = keywords.split(',').map(k => k.trim()).filter(k => k !== "");
       const totalRows = rawData.length;
       const formattedData: any[] = [];
 
-      // CHUNKED PROCESSING LOOP FOR LIVE PROGRESS BAR
       for (let i = 0; i < totalRows; i++) {
         const row = rawData[i];
         const baseName = row[columnMapping.productName] || "Unknown Product";
@@ -175,7 +185,7 @@ export default function OptimizerPage() {
 
         if (tone === "urgent") {
           formattedTitle = `🔥 HOT DEAL: ${baseName}`;
-          formattedDesc = `️ LIMITED STOCK! ${baseDesc} Hurry, grab this deal before it's gone!`;
+          formattedDesc = `⚠️ LIMITED STOCK! ${baseDesc} Hurry, grab this deal before it's gone!`;
         } else if (tone === "minimalist") {
           formattedTitle = baseName.split(' ').slice(0, 6).join(' ');
           formattedDesc = baseDesc.split('.').slice(0, 2).join('.') + '.';
@@ -196,26 +206,30 @@ export default function OptimizerPage() {
         
         formattedData.push(formattedRow);
 
-        // UPDATE UI EVERY 10 ROWS TO PREVENT FREEZING
         if (i % 10 === 0 || i === totalRows - 1) {
           const percent = Math.round(((i + 1) / totalRows) * 100);
           setProgress(percent);
-          // Yield to the browser so the UI can repaint the progress bar
           await new Promise(resolve => setTimeout(resolve, 0)); 
         }
       }
 
-      // DEDUCT CREDIT & SAVE
+      // 💳 DEDUCT CREDIT & LOG TRANSACTION
       const newCredits = credits - 1;
       await supabase.from("profiles").update({ credits: newCredits }).eq("id", session.user.id);
-      await supabase.from("credit_transactions").insert({ user_id: session.user.id, amount: -1, action: `Processed ${totalRows} items for ${platform}` });
+      
+      // Safe insert for transaction log (won't break app if table is missing)
+      supabase.from("credit_transactions").insert({ 
+        user_id: session.user.id, 
+        amount: -1, 
+        action: `Processed ${totalRows} items for ${platform}` 
+      });
 
       setCredits(newCredits);
       setProcessedData(formattedData);
-      toast.dismiss();
-      toast.success(`Successfully processed ${totalRows} items! 1 credit used.`);
+      toast.dismiss(loadingToast);
+      toast.success(`⚡ Successfully processed ${totalRows} items! 1 credit used.`);
     } catch (error) {
-      toast.dismiss();
+      toast.dismiss(loadingToast);
       toast.error("Failed to process file.");
       console.error(error);
     }
@@ -237,30 +251,34 @@ export default function OptimizerPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("CSV downloaded successfully!");
+    toast.success("📥 CSV downloaded successfully!");
   };
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link href="/dashboard"><h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Nabjo Optimizer</h1></Link>
-          <div className="flex items-center gap-4">
-            <div className="px-4 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-yellow-400 font-bold flex items-center gap-2">⚡ {credits} Credits</div>
-            <Link href="/dashboard"><button className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-sm font-bold rounded-lg transition">Back to Dashboard</button></Link>
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
+          <Link href="/dashboard"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Nabjo Optimizer</h1></Link>
+          <div className="flex items-center gap-3 md:gap-4">
+            {/* 🆕 PRO BADGE INDICATOR */}
+            <div className="px-3 md:px-4 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-yellow-400 font-bold flex items-center gap-2 text-sm md:text-base">
+              ⚡ {credits} Credits
+              {plan === 'pro' && <span className="text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded font-bold">PRO</span>}
+            </div>
+            <Link href="/dashboard"><button className="px-3 md:px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-xs md:text-sm font-bold rounded-lg transition">Back</button></Link>
           </div>
         </div>
       </nav>
 
-      <div className="max-w-5xl mx-auto px-6 py-12">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Bulk Listing Optimizer</h1>
-          <p className="text-gray-400 text-lg">Upload your raw CSV. Map your columns. Get platform-perfect listings for the world's biggest marketplaces.</p>
+      <div className="max-w-5xl mx-auto px-4 md:px-6 py-8 md:py-12">
+        <div className="text-center mb-8 md:mb-12">
+          <h1 className="text-3xl md:text-4xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Bulk Listing Optimizer</h1>
+          <p className="text-gray-400 text-base md:text-lg">Upload your raw CSV. Map your columns. Get platform-perfect listings instantly.</p>
         </div>
 
         <div className="space-y-6">
           {/* 1. Upload */}
-          <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
+          <div className="bg-gray-900 p-4 md:p-6 rounded-2xl border border-gray-800">
             <h3 className="text-lg font-bold mb-4 text-white">1. Upload CSV</h3>
             <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".csv" className="hidden" />
             <div onClick={() => fileInputRef.current?.click()} className="w-full h-32 border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-gray-800/50 transition">
@@ -270,10 +288,10 @@ export default function OptimizerPage() {
           </div>
 
           {/* Saved Presets */}
-          <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
+          <div className="bg-gray-900 p-4 md:p-6 rounded-2xl border border-gray-800">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-white">💾 Saved Presets</h3>
-              <button onClick={() => setShowSaveModal(true)} className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-lg transition">+ Save Current Setup</button>
+              <button onClick={() => setShowSaveModal(true)} className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-lg transition">+ Save Setup</button>
             </div>
             {presets.length > 0 ? (
               <div className="flex flex-wrap gap-3 items-center">
@@ -285,25 +303,25 @@ export default function OptimizerPage() {
                     <button onClick={(e) => { e.stopPropagation(); handleDeletePreset(preset.id); }} className="ml-2 text-red-400 hover:text-red-300 font-bold">×</button>
                   </div>
                 ))}
-                <button onClick={handleLoadPreset} disabled={!selectedPresetId} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-bold rounded-lg transition ml-auto">Load Selected</button>
+                <button onClick={handleLoadPreset} disabled={!selectedPresetId} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-bold rounded-lg transition ml-auto">Load</button>
               </div>
             ) : (
-              <p className="text-sm text-gray-500">No saved presets yet. Configure your settings below and click "Save Current Setup".</p>
+              <p className="text-sm text-gray-500">No saved presets yet. Configure settings below and click "Save Setup".</p>
             )}
           </div>
 
           {/* 2. Map Columns */}
           {csvHeaders.length > 0 && (
-            <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
+            <div className="bg-gray-900 p-4 md:p-6 rounded-2xl border border-gray-800">
               <h3 className="text-lg font-bold mb-4 text-white">2. Map Your Columns</h3>
-              <div className="grid md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 {['productName', 'description', 'price', 'brand', 'sku', 'image', 'stock'].map((field) => (
                   <div key={field}>
                     <label className="block text-sm font-medium text-gray-400 mb-2 capitalize">
                       {field === 'productName' ? 'Product Name *' : field.replace(/([A-Z])/g, ' $1').trim()}
                     </label>
-                    <select value={columnMapping[field]} onChange={(e) => setColumnMapping({...columnMapping, [field]: e.target.value})} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500">
-                      <option value="">-- Select Column (Optional) --</option>
+                    <select value={columnMapping[field]} onChange={(e) => setColumnMapping({...columnMapping, [field]: e.target.value})} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-sm">
+                      <option value="">-- Select Column --</option>
                       {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                     </select>
                   </div>
@@ -313,28 +331,27 @@ export default function OptimizerPage() {
           )}
 
           {/* 3. Settings & Progress */}
-          <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800">
+          <div className="bg-gray-900 p-4 md:p-6 rounded-2xl border border-gray-800">
             <h3 className="text-lg font-bold mb-4 text-white">3. Optimization Settings</h3>
-            <div className="grid md:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-2">Target Platform</label>
-                <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500">
+                <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-sm">
                   <option value="amazon">Amazon</option><option value="ebay">eBay</option><option value="walmart">Walmart</option><option value="shopify">Shopify</option><option value="etsy">Etsy</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-2">Brand Tone</label>
-                <select value={tone} onChange={(e) => setTone(e.target.value)} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500">
+                <select value={tone} onChange={(e) => setTone(e.target.value)} className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-sm">
                   <option value="professional">Professional</option><option value="urgent">Urgent</option><option value="minimalist">Minimalist</option>
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-2">SEO Keywords</label>
-                <input type="text" value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="wireless, waterproof" className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500" />
+                <input type="text" value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="wireless, waterproof" className="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-blue-500 text-sm" />
               </div>
             </div>
 
-            {/* LIVE PROGRESS BAR */}
             {isProcessing && (
               <div className="mb-6">
                 <div className="flex justify-between text-sm font-bold text-blue-400 mb-2">
@@ -347,7 +364,7 @@ export default function OptimizerPage() {
               </div>
             )}
 
-            <button onClick={handleProcess} disabled={isProcessing || !file} className="w-full p-4 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold rounded-xl transition flex justify-center items-center gap-2">
+            <button onClick={handleProcess} disabled={isProcessing || !file} className="w-full p-4 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold rounded-xl transition flex justify-center items-center gap-2 text-base">
               {isProcessing ? "⚙️ Processing..." : `⚡ Process & Deduct 1 Credit`}
             </button>
           </div>
@@ -355,9 +372,9 @@ export default function OptimizerPage() {
           {/* 4. Results */}
           {processedData.length > 0 && (
             <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
-              <div className="p-6 border-b border-gray-800 flex justify-between items-center">
+              <div className="p-4 md:p-6 border-b border-gray-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <h3 className="text-lg font-bold text-white">4. Preview & Export ({processedData.length} items)</h3>
-                <button onClick={handleExport} className="px-6 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg transition flex items-center gap-2">📥 Export {platform.toUpperCase()} CSV</button>
+                <button onClick={handleExport} className="w-full sm:w-auto px-6 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg transition flex items-center justify-center gap-2 text-sm">📥 Export {platform.toUpperCase()} CSV</button>
               </div>
               <div className="overflow-x-auto max-h-96">
                 <table className="w-full text-left text-sm">
