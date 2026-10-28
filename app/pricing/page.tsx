@@ -43,7 +43,7 @@ export default function PricingPage() {
     if (error) {
       toast.error("Error upgrading: " + error.message);
     } else {
-      toast.success("🎉 Welcome to Pro! You now have unlimited listings, AI tools, and 50 Bulk Optimizer credits.");
+      toast.success(" Welcome to Pro! You now have unlimited listings, AI tools, Export features, and 50 Bulk Optimizer credits.");
       router.push("/dashboard");
     }
     setLoading(false);
@@ -86,6 +86,10 @@ export default function PricingPage() {
               </li>
               <li className="flex items-start gap-3 text-gray-300">
                 <svg className="w-5 h-5 text-green-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                <span>Basic Share Link Export</span>
+              </li>
+              <li className="flex items-start gap-3 text-gray-300">
+                <svg className="w-5 h-5 text-green-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                 <span>Standard Image Uploads</span>
               </li>
               <li className="flex items-start gap-3 text-gray-300">
@@ -111,6 +115,10 @@ export default function PricingPage() {
               <li className="flex items-start gap-3 text-white">
                 <svg className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                 <span>50 Bulk Optimizer Credits / month</span>
+              </li>
+              <li className="flex items-start gap-3 text-white">
+                <svg className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                <span>📤 Cross-Platform Export (IG, Shopify, CSV)</span>
               </li>
               <li className="flex items-start gap-3 text-white">
                 <svg className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
