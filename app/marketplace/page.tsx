@@ -108,7 +108,6 @@ export default function MarketplacePage() {
     setLoading(false);
   };
 
-  // 📸 VISUAL SEARCH HANDLER
   const handleVisualSearch = async () => {
     if (!visualKeyword.trim()) {
       toast.error("Please add a few keywords to describe the item.");
@@ -123,14 +122,12 @@ export default function MarketplacePage() {
 
     setLoading(true);
     try {
-      // Fetch latest profile data to check limits and country
       const { data: profile } = await supabase.from("profiles").select("plan, visual_searches_used, country").eq("id", currentUser.id).single();
       const userPlan = profile?.plan || "free";
       const searchesUsed = profile?.visual_searches_used || 0;
       const country = profile?.country || "Unknown";
       setUserCountry(country);
 
-      // 🚫 ENFORCE 2-SEARCH LIMIT FOR FREE USERS
       if (userPlan === "free" && searchesUsed >= 2) {
         toast.error("🔒 Free limit reached (2/2 visual searches). Upgrade to Pro for unlimited!");
         router.push("/pricing");
@@ -139,19 +136,16 @@ export default function MarketplacePage() {
         return;
       }
 
-      // Increment counter if free
       if (userPlan === "free") {
         await supabase.from("profiles").update({ visual_searches_used: searchesUsed + 1 }).eq("id", currentUser.id);
       }
 
-      // 🌍 LOCAL-FIRST SEARCH LOGIC
       let query = supabase
         .from("listings")
         .select("*, profiles(country)")
         .eq("is_public", true)
         .in("status", ["Available", "Active"]);
 
-      // If international is NOT checked, strictly filter by user's country
       if (!includeInternational) {
         query = query.eq("profiles.country", country);
       }
@@ -241,15 +235,63 @@ export default function MarketplacePage() {
     fetchListings(""); 
   };
 
+  // 🦴 PREMIUM SKELETON LOADER UI
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative w-16 h-16">
-            <div className="absolute top-0 left-0 w-full h-full border-4 border-gray-800 rounded-full"></div>
-            <div className="absolute top-0 left-0 w-full h-full border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
+      <main className="min-h-screen bg-gray-950 text-white">
+        <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
+          <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
+            <div className="h-8 w-24 bg-gray-800 rounded-lg animate-pulse"></div>
+            <div className="flex gap-3">
+              <div className="h-9 w-24 bg-gray-800 rounded-lg animate-pulse"></div>
+              <div className="h-9 w-20 bg-gray-800 rounded-lg animate-pulse"></div>
+            </div>
           </div>
-          <p className="text-gray-400 font-medium animate-pulse">Loading Marketplace...</p>
+        </nav>
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-12">
+          <div className="text-center mb-6 md:mb-12">
+            <div className="h-10 w-64 bg-gray-800 rounded-lg mx-auto mb-4 animate-pulse"></div>
+            <div className="h-5 w-96 bg-gray-800 rounded-lg mx-auto animate-pulse"></div>
+          </div>
+          
+          <div className="max-w-5xl mx-auto mb-8 md:mb-12 space-y-4">
+            <div className="flex flex-col md:flex-row gap-3 md:gap-4">
+              <div className="flex-1 h-14 bg-gray-800 rounded-xl animate-pulse"></div>
+              <div className="flex gap-3">
+                <div className="flex-1 md:flex-none h-14 w-32 bg-gray-800 rounded-xl animate-pulse"></div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:flex md:flex-wrap gap-3 p-4 bg-gray-900/50 border border-gray-800 rounded-xl">
+              <div className="col-span-2 md:col-span-1 md:flex-1 h-12 bg-gray-800 rounded-lg animate-pulse"></div>
+              <div className="col-span-1 md:flex-1 h-12 bg-gray-800 rounded-lg animate-pulse"></div>
+              <div className="col-span-1 md:flex-1 h-12 bg-gray-800 rounded-lg animate-pulse"></div>
+              <div className="col-span-2 md:col-span-1 md:flex-1 h-12 bg-gray-800 rounded-lg animate-pulse"></div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden relative h-full flex flex-col">
+                <div className="absolute top-4 left-4 z-20 w-10 h-10 bg-gray-800 rounded-full animate-pulse"></div>
+                <div className="absolute top-4 right-4 z-20 w-20 h-6 bg-gray-800 rounded-full animate-pulse"></div>
+                <div className="aspect-square bg-gray-800 animate-pulse"></div>
+                <div className="p-4 md:p-5 flex-1 flex flex-col space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div className="h-6 bg-gray-800 rounded w-2/3 animate-pulse"></div>
+                    <div className="h-6 bg-gray-800 rounded w-1/4 animate-pulse"></div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-4 bg-gray-800 rounded w-full animate-pulse"></div>
+                    <div className="h-4 bg-gray-800 rounded w-5/6 animate-pulse"></div>
+                  </div>
+                  <div className="mt-auto pt-4 border-t border-gray-800 flex justify-between">
+                    <div className="h-4 bg-gray-800 rounded w-1/4 animate-pulse"></div>
+                    <div className="h-4 bg-gray-800 rounded w-1/4 animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </main>
     );
@@ -257,7 +299,6 @@ export default function MarketplacePage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      {/* Hidden file input for visual search */}
       <input 
         type="file" 
         id="visualSearchInput" 
@@ -286,7 +327,6 @@ export default function MarketplacePage() {
         </div>
       </nav>
 
-      {/* 📱 MOBILE POLISH: Adjusted padding and text sizes */}
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-12">
         <div className="text-center mb-6 md:mb-12">
           <h1 className="text-3xl md:text-4xl font-bold mb-2 md:mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Public Marketplace</h1>
@@ -294,7 +334,6 @@ export default function MarketplacePage() {
         </div>
 
         <form onSubmit={handleSearch} className="max-w-5xl mx-auto mb-8 md:mb-12 space-y-4">
-          {/* 📱 MOBILE POLISH: Stacked on mobile, row on desktop */}
           <div className="flex flex-col md:flex-row gap-3 md:gap-4">
             <div className="relative flex-1 flex">
               <input 
@@ -302,7 +341,6 @@ export default function MarketplacePage() {
                 value={searchTerm} 
                 onChange={(e) => setSearchTerm(e.target.value)} 
                 placeholder="Search for anything..." 
-                // 🛡️ EDGE CASE: text-base prevents iOS auto-zoom
                 className="flex-1 p-3 md:p-4 bg-gray-900 border border-gray-800 rounded-l-xl text-white text-base focus:outline-none focus:border-blue-500" 
               />
               <button 
@@ -330,7 +368,6 @@ export default function MarketplacePage() {
             </div>
           </div>
           
-          {/* 📱 MOBILE POLISH: 2x2 Grid on mobile, Flex row on desktop */}
           <div className="grid grid-cols-2 md:flex md:flex-wrap gap-3 p-4 bg-gray-900/50 border border-gray-800 rounded-xl">
             <select 
               value={distanceFilter} 
@@ -432,7 +469,6 @@ export default function MarketplacePage() {
         )}
       </div>
 
-      {/* 📸 VISUAL SEARCH MODAL */}
       {visualSearchModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-4 md:p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -447,7 +483,6 @@ export default function MarketplacePage() {
 
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-400 mb-2">Keywords (Required)</label>
-              {/* 🛡️ EDGE CASE: text-base prevents iOS auto-zoom */}
               <input 
                 type="text" 
                 value={visualKeyword} 
