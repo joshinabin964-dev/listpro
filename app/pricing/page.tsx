@@ -14,8 +14,10 @@ export default function PricingPage() {
     const checkPlan = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        const { data } = await supabase.from("profiles").select("plan").eq("id", session.user.id).single();
-        if (data) setCurrentPlan(data.plan);
+        const { data } = await supabase.from("profiles").select("plan, credits").eq("id", session.user.id).single();
+        if (data) {
+          setCurrentPlan(data.plan || "free");
+        }
       }
     };
     checkPlan();
@@ -29,23 +31,25 @@ export default function PricingPage() {
       return;
     }
 
-    // Simulate payment success and update database
+    // 🚀 UPGRADE TO PRO & GRANT 50 BULK OPTIMIZER CREDITS
     const { error } = await supabase
       .from("profiles")
-      .update({ plan: "pro" })
+      .update({ 
+        plan: "pro",
+        credits: 50 // Grants the 50 credits for the Bulk Optimizer
+      })
       .eq("id", session.user.id);
 
     if (error) {
       toast.error("Error upgrading: " + error.message);
     } else {
-      toast.success("🎉 Welcome to Pro! You now have unlimited listings and AI tools.");
+      toast.success("🎉 Welcome to Pro! You now have unlimited listings, AI tools, and 50 Bulk Optimizer credits.");
       router.push("/dashboard");
     }
     setLoading(false);
   };
 
   return (
-    // 📱 MOBILE POLISH: Adjusted main container padding
     <main className="min-h-screen bg-gray-950 text-white">
       {/* Navbar */}
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
@@ -59,7 +63,6 @@ export default function PricingPage() {
         </div>
       </nav>
 
-      {/* 📱 MOBILE POLISH: Adjusted padding and text sizes */}
       <div className="max-w-5xl mx-auto px-4 md:px-6 py-12 md:py-20 text-center">
         <h1 className="text-3xl md:text-5xl font-bold mb-3 md:mb-4">Simple, transparent pricing</h1>
         <p className="text-base md:text-xl text-gray-400 mb-12 md:mb-16 max-w-2xl mx-auto">
@@ -76,6 +79,10 @@ export default function PricingPage() {
               <li className="flex items-start gap-3 text-gray-300">
                 <svg className="w-5 h-5 text-green-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                 <span>3 Free Listings</span>
+              </li>
+              <li className="flex items-start gap-3 text-gray-300">
+                <svg className="w-5 h-5 text-green-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                <span>5 Bulk Optimizer Credits</span>
               </li>
               <li className="flex items-start gap-3 text-gray-300">
                 <svg className="w-5 h-5 text-green-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
@@ -100,6 +107,10 @@ export default function PricingPage() {
               <li className="flex items-start gap-3 text-white">
                 <svg className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                 <span>Unlimited Listings</span>
+              </li>
+              <li className="flex items-start gap-3 text-white">
+                <svg className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                <span>50 Bulk Optimizer Credits / month</span>
               </li>
               <li className="flex items-start gap-3 text-white">
                 <svg className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
