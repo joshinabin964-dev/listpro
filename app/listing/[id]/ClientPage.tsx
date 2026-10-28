@@ -43,6 +43,9 @@ export default function ClientPage() {
   // 📊 LIVE SOCIAL PROOF STATE
   const [socialProof, setSocialProof] = useState("");
 
+  // 📤 EXPORT MODAL STATE
+  const [showExportModal, setShowExportModal] = useState(false);
+
   useEffect(() => {
     const fetchData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -56,7 +59,6 @@ export default function ClientPage() {
       if (listingData) {
         setListing(listingData);
         
-        // 📊 BUILD LIVE SOCIAL PROOF DATA
         const views = listingData.views || 0;
         let proof = `👁️ ${views} ${views === 1 ? 'person has' : 'people have'} viewed this item`;
         
@@ -164,7 +166,7 @@ export default function ClientPage() {
     return () => clearInterval(timer);
   }, [listing?.auction_end_time]);
 
-  // SECURE HANDLE PLACE BID (Uses API Route to prevent cheating)
+  // SECURE HANDLE PLACE BID
   const handlePlaceBid = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) { toast.error("Please log in to bid."); router.push("/login"); return; }
@@ -191,9 +193,7 @@ export default function ClientPage() {
         body: JSON.stringify({ listing_id: listing.id, bid_amount: bidAmount }),
       });
       const data = await res.json();
-      
       if (!res.ok) throw new Error(data.error);
-
       toast.success(`🎉 Bid of ${listing.currency_code === 'NPR' ? 'Rs. ' : '$'}${bidAmount} placed successfully!`);
       setCustomBidAmount("");
     } catch (error: any) {
@@ -285,6 +285,45 @@ export default function ClientPage() {
     setIsRequestingHold(false);
   };
 
+  // 📤 EXPORT FUNCTIONS
+  const copyToClipboard = (text: string, message: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(message);
+    setShowExportModal(false);
+  };
+
+  const generateInstagramCaption = () => {
+    const price = `${listing.currency_code === 'NPR' ? 'Rs. ' : '$'}${listing.sale_price}`;
+    const tags = listing.category ? `#${listing.category.replace(/\s+/g, '')}` : '#ForSale';
+    const brandTag = listing.brand ? `#${listing.brand.replace(/\s+/g, '')}` : '';
+    
+    return `🔥 JUST LISTED ON NABJO! 🔥\n\n` +
+           `📦 **${listing.product_name}**\n` +
+           `💰 Price: ${price}\n` +
+           `✨ Condition: ${listing.condition}\n\n` +
+           `📝 **Details:**\n${listing.ai_description || listing.description}\n\n` +
+           `📍 Location: ${seller?.country || 'Local'}\n` +
+           `🔗 Link in bio to buy securely on Nabjo!\n\n` +
+           `${tags} ${brandTag} #NabjoMarketplace #ForSale #Deal`;
+  };
+
+  const downloadShopifyCSV = () => {
+    const price = listing.sale_price;
+    const csvContent = "Handle,Title,Body (HTML),Vendor,Type,Tags,Published,Option1 Name,Option1 Value,Variant SKU,Variant Grams,Variant Inventory Tracker,Variant Inventory Qty,Variant Inventory Policy,Variant Fulfillment Service,Variant Price,Variant Requires Shipping,Variant Taxable,Image Src,Image Position,Image Alt Text,Gift Card,SEO Title,SEO Description,Google Shopping / Google Product Category,Google Shopping / Gender,Google Shopping / Age Group,Google Shopping / MPN,Google Shopping / AdWords Grouping,Google Shopping / AdWords Labels,Google Shopping / Condition,Google Shopping / Custom Product,Google Shopping / Custom Label 0,Google Shopping / Custom Label 1,Google Shopping / Custom Label 2,Google Shopping / Custom Label 3,Google Shopping / Custom Label 4,Variant Image,Variant Weight Unit,Variant Tax Code,Cost per item,Included / Global,Price / International,Price / US\n" +
+      `"nabjo-${listing.id}","${listing.product_name}","${(listing.ai_description || listing.description || '').replace(/"/g, '""')}","Nabjo Seller","${listing.category || 'Other'}","${listing.condition}, ${listing.brand || ''}",1,"Title","Default Title","",0,"shopify",1,"deny","manual","${price}",1,1,"${listing.image_url || ''}",1,"${listing.product_name}",0,"","",0,"","","","New",0,"","","","",0,"","g","",0,1,"${price}","${price}"`;
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `nabjo-export-${listing.id}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("📦 Shopify CSV downloaded successfully!");
+    setShowExportModal(false);
+  };
+
   // 🦴 PREMIUM SKELETON LOADER UI
   if (loading) {
     return (
@@ -300,9 +339,7 @@ export default function ClientPage() {
             <div className="space-y-4">
               <div className="bg-gray-900 rounded-2xl border border-gray-800 aspect-square animate-pulse"></div>
               <div className="grid grid-cols-5 gap-2 md:gap-3">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className="aspect-square bg-gray-800 rounded-lg animate-pulse"></div>
-                ))}
+                {[...Array(5)].map((_, i) => (<div key={i} className="aspect-square bg-gray-800 rounded-lg animate-pulse"></div>))}
               </div>
             </div>
             <div className="flex flex-col space-y-4">
@@ -334,6 +371,7 @@ export default function ClientPage() {
 
   const isAuctionActive = listing.is_auction && timeLeft !== "Auction Ended";
   const currentBid = listing.current_bid || listing.starting_price || listing.starting_bid || 0;
+  const isOwner = currentUser?.id === listing.user_id;
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
@@ -354,7 +392,6 @@ export default function ClientPage() {
                   <span className="text-xs md:text-sm font-bold text-white">LIVE • {timeLeft}</span>
                 </div>
               )}
-
               {listing.video_url && selectedImage === 'video' ? (
                 <div className="relative w-full h-full bg-black flex items-center justify-center">
                   <video src={listing.video_url} controls className="w-full h-full object-contain" />
@@ -363,9 +400,7 @@ export default function ClientPage() {
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
                       NABJO VERIFIED
                     </div>
-                    <div className="text-[10px] md:text-xs text-gray-300 mt-0.5 font-mono">
-                      {new Date().toLocaleDateString()} • ID: {listing.id.slice(0, 8).toUpperCase()}
-                    </div>
+                    <div className="text-[10px] md:text-xs text-gray-300 mt-0.5 font-mono">{new Date().toLocaleDateString()} • ID: {listing.id.slice(0, 8).toUpperCase()}</div>
                   </div>
                 </div>
               ) : selectedImage ? (
@@ -400,17 +435,12 @@ export default function ClientPage() {
               <div className="mb-4 md:mb-6 p-4 bg-gray-900 rounded-xl border border-purple-500/30">
                 <div className="text-sm text-gray-400 mb-1">Current Highest Bid</div>
                 <div className="text-3xl md:text-4xl font-bold text-purple-400 mb-2">{currencySymbol}{currentBid}</div>
-                {isAuctionActive && (
-                  <div className="text-sm text-gray-300">
-                    Next minimum bid: <span className="font-bold text-white">{currencySymbol}{currentBid + 1}</span>
-                  </div>
-                )}
+                {isAuctionActive && <div className="text-sm text-gray-300">Next minimum bid: <span className="font-bold text-white">{currencySymbol}{currentBid + 1}</span></div>}
               </div>
             ) : (
               <div className="text-2xl md:text-3xl font-bold text-blue-400 mb-4 md:mb-6">{currencySymbol}{listing.sale_price}</div>
             )}
 
-            {/* 📊 LIVE SOCIAL PROOF TICKER */}
             {socialProof && (
               <div className="flex items-center gap-2 mb-6 p-3 bg-gray-900/50 border border-gray-800 rounded-lg w-fit">
                 <span className="relative flex h-2.5 w-2.5">
@@ -472,18 +502,8 @@ export default function ClientPage() {
                 <>
                   {currentUser && userCountry === seller?.country ? (
                     <form onSubmit={handlePlaceBid} className="flex-1 min-w-[200px] flex gap-2 w-full sm:w-auto">
-                      <input 
-                        type="number" 
-                        value={customBidAmount} 
-                        onChange={(e) => setCustomBidAmount(e.target.value)}
-                        placeholder={`Min: ${currencySymbol}${currentBid + 1}`}
-                        className="flex-1 p-3 md:p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-purple-500"
-                      />
-                      <button 
-                        type="submit"
-                        disabled={isBidding}
-                        className="px-4 md:px-6 py-3 md:py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 text-sm md:text-base"
-                      >
+                      <input type="number" value={customBidAmount} onChange={(e) => setCustomBidAmount(e.target.value)} placeholder={`Min: ${currencySymbol}${currentBid + 1}`} className="flex-1 p-3 md:p-4 bg-gray-800 border border-gray-700 rounded-xl text-white text-base focus:outline-none focus:border-purple-500" />
+                      <button type="submit" disabled={isBidding} className="px-4 md:px-6 py-3 md:py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 text-sm md:text-base">
                         {isBidding ? "..." : "🔨 Place Bid"}
                       </button>
                     </form>
@@ -496,22 +516,14 @@ export default function ClientPage() {
               ) : (
                 <>
                   {listing.is_reserved && listing.reserved_by !== currentUser?.id ? (
-                    <div className="flex-1 min-w-[200px] p-3 md:p-4 bg-gray-800 text-gray-400 font-bold rounded-xl text-base md:text-lg text-center border border-gray-700 flex items-center justify-center gap-2">
-                      🔒 Reserved by another buyer
-                    </div>
+                    <div className="flex-1 min-w-[200px] p-3 md:p-4 bg-gray-800 text-gray-400 font-bold rounded-xl text-base md:text-lg text-center border border-gray-700 flex items-center justify-center gap-2">🔒 Reserved by another buyer</div>
                   ) : holdRequest?.status === "pending" ? (
-                    <div className="flex-1 min-w-[200px] p-3 md:p-4 bg-yellow-900/20 text-yellow-400 font-bold rounded-xl text-base md:text-lg text-center border border-yellow-500/30 flex items-center justify-center gap-2">
-                      ⏳ Hold Request Pending
-                    </div>
+                    <div className="flex-1 min-w-[200px] p-3 md:p-4 bg-yellow-900/20 text-yellow-400 font-bold rounded-xl text-base md:text-lg text-center border border-yellow-500/30 flex items-center justify-center gap-2">⏳ Hold Request Pending</div>
                   ) : holdRequest?.status === "approved" ? (
-                    <div className="flex-1 min-w-[200px] p-3 md:p-4 bg-green-900/20 text-green-400 font-bold rounded-xl text-base md:text-lg text-center border border-green-500/30 flex items-center justify-center gap-2">
-                      ✅ Item Reserved for You! (24h)
-                    </div>
+                    <div className="flex-1 min-w-[200px] p-3 md:p-4 bg-green-900/20 text-green-400 font-bold rounded-xl text-base md:text-lg text-center border border-green-500/30 flex items-center justify-center gap-2">✅ Item Reserved for You! (24h)</div>
                   ) : currentUser && currentUser.id !== listing.user_id ? (
                     <div className="flex flex-col sm:flex-row gap-3 w-full">
-                      <Link href={`/chat/${listing.id}?user=${listing.user_id}`} className="flex-1 min-w-[200px] p-3 md:p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-base md:text-lg flex items-center justify-center gap-2 text-center">
-                         Message
-                      </Link>
+                      <Link href={`/chat/${listing.id}?user=${listing.user_id}`} className="flex-1 min-w-[200px] p-3 md:p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-base md:text-lg flex items-center justify-center gap-2 text-center">Message</Link>
                       <button onClick={handleRequestHold} disabled={isRequestingHold} className="flex-1 min-w-[200px] p-3 md:p-4 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition text-base md:text-lg flex items-center justify-center gap-2">
                         {isRequestingHold ? "..." : "🔒 Hold"}
                       </button>
@@ -527,6 +539,17 @@ export default function ClientPage() {
                   {saving ? "..." : (isSaved ? "❤️ Saved" : "🤍 Save")}
                 </button>
               )}
+
+              {/* 📤 EXPORT BUTTON (ONLY FOR OWNER) */}
+              {isOwner && (
+                <button 
+                  onClick={() => setShowExportModal(true)}
+                  className="px-4 md:px-6 py-3 md:py-4 bg-gray-800 hover:bg-gray-700 text-blue-400 font-bold rounded-xl transition border border-gray-700 flex items-center justify-center gap-2 text-sm md:text-base"
+                >
+                  📤 Export / Share Listing
+                </button>
+              )}
+
               {currentUser && currentUser.id !== listing.user_id && (
                 <div className="flex flex-wrap gap-2 md:gap-3 w-full sm:w-auto">
                   <button onClick={() => setShowReviewModal(true)} className="flex-1 sm:flex-none px-4 md:px-6 py-3 md:py-4 bg-gray-800 hover:bg-gray-700 text-green-400 font-bold rounded-xl transition border border-gray-700 flex items-center justify-center gap-2 text-sm md:text-base">⭐ Review</button>
@@ -548,6 +571,49 @@ export default function ClientPage() {
           </div>
         </div>
       </div>
+
+      {/* 📤 EXPORT MODAL */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h3 className="text-xl font-bold mb-2 text-white flex items-center gap-2">📤 Export Listing</h3>
+            <p className="text-gray-400 text-sm mb-6">Push this listing to other platforms instantly.</p>
+            
+            <div className="space-y-3">
+              <button 
+                onClick={() => copyToClipboard(generateInstagramCaption(), "📱 Instagram caption copied to clipboard!")}
+                className="w-full p-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-xl transition flex items-center justify-between group"
+              >
+                <span className="flex items-center gap-3"><span className="text-2xl">📱</span> Copy Instagram Caption</span>
+                <span className="text-xs bg-white/20 px-2 py-1 rounded group-hover:bg-white/30 transition">Auto-Hashtags</span>
+              </button>
+
+              <button 
+                onClick={downloadShopifyCSV}
+                className="w-full p-4 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition border border-gray-700 flex items-center justify-between group"
+              >
+                <span className="flex items-center gap-3"><span className="text-2xl">📦</span> Download Shopify CSV</span>
+                <span className="text-xs bg-gray-700 px-2 py-1 rounded group-hover:bg-gray-600 transition">Bulk Import Ready</span>
+              </button>
+
+              <button 
+                onClick={() => copyToClipboard(`${window.location.origin}/listing/${listing.id}`, "🔗 Clean share link copied to clipboard!")}
+                className="w-full p-4 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition border border-gray-700 flex items-center justify-between group"
+              >
+                <span className="flex items-center gap-3"><span className="text-2xl">🔗</span> Copy Share Link</span>
+                <span className="text-xs bg-gray-700 px-2 py-1 rounded group-hover:bg-gray-600 transition">Direct URL</span>
+              </button>
+            </div>
+
+            <button 
+              onClick={() => setShowExportModal(false)} 
+              className="w-full mt-6 p-3 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold rounded-xl transition"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {showReviewModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
