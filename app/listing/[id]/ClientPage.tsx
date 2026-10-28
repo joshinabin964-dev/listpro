@@ -40,6 +40,9 @@ export default function ClientPage() {
   const [isBidding, setIsBidding] = useState(false);
   const [customBidAmount, setCustomBidAmount] = useState("");
 
+  // 📊 LIVE SOCIAL PROOF STATE
+  const [socialProof, setSocialProof] = useState("");
+
   useEffect(() => {
     const fetchData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -53,6 +56,21 @@ export default function ClientPage() {
       if (listingData) {
         setListing(listingData);
         
+        // 📊 BUILD LIVE SOCIAL PROOF DATA
+        const views = listingData.views || 0;
+        let proof = `👁️ ${views} ${views === 1 ? 'person has' : 'people have'} viewed this item`;
+        
+        if (listingData.is_auction) {
+          const { count } = await supabase
+            .from("bids")
+            .select("*", { count: "exact", head: true })
+            .eq("listing_id", listingData.id);
+          if (count && count > 0) {
+            proof += ` • 🔥 ${count} active bid${count > 1 ? 's' : ''}`;
+          }
+        }
+        setSocialProof(proof);
+
         if (session?.user?.id !== listingData.user_id) {
           supabase
             .from("listings")
@@ -167,7 +185,6 @@ export default function ClientPage() {
 
     setIsBidding(true);
     try {
-      // Call the secure server-side API route
       const res = await fetch('/api/auctions/place-bid', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -268,7 +285,44 @@ export default function ClientPage() {
     setIsRequestingHold(false);
   };
 
-  if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><p>Loading...</p></main>;
+  // 🦴 PREMIUM SKELETON LOADER UI
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-gray-950 text-white">
+        <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
+          <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
+            <div className="h-8 w-24 bg-gray-800 rounded-lg animate-pulse"></div>
+            <div className="h-9 w-20 bg-gray-800 rounded-lg animate-pulse"></div>
+          </div>
+        </nav>
+        <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-12">
+          <div className="grid md:grid-cols-2 gap-8 md:gap-12">
+            <div className="space-y-4">
+              <div className="bg-gray-900 rounded-2xl border border-gray-800 aspect-square animate-pulse"></div>
+              <div className="grid grid-cols-5 gap-2 md:gap-3">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="aspect-square bg-gray-800 rounded-lg animate-pulse"></div>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col space-y-4">
+              <div className="h-6 w-32 bg-gray-800 rounded animate-pulse"></div>
+              <div className="h-10 w-3/4 bg-gray-800 rounded animate-pulse"></div>
+              <div className="h-16 w-1/2 bg-gray-800 rounded-xl animate-pulse"></div>
+              <div className="space-y-2 mt-4">
+                <div className="h-4 w-full bg-gray-800 rounded animate-pulse"></div>
+                <div className="h-4 w-full bg-gray-800 rounded animate-pulse"></div>
+                <div className="h-4 w-5/6 bg-gray-800 rounded animate-pulse"></div>
+              </div>
+              <div className="h-32 w-full bg-gray-800 rounded-2xl animate-pulse mt-4"></div>
+              <div className="h-14 w-full bg-gray-800 rounded-xl animate-pulse mt-4"></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   if (!listing) return <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><p>Listing not found.</p></main>;
 
   const currencySymbol = listing.currency_code === 'NPR' ? 'Rs. ' : '$';
@@ -356,6 +410,17 @@ export default function ClientPage() {
               <div className="text-2xl md:text-3xl font-bold text-blue-400 mb-4 md:mb-6">{currencySymbol}{listing.sale_price}</div>
             )}
 
+            {/* 📊 LIVE SOCIAL PROOF TICKER */}
+            {socialProof && (
+              <div className="flex items-center gap-2 mb-6 p-3 bg-gray-900/50 border border-gray-800 rounded-lg w-fit">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                </span>
+                <span className="text-xs md:text-sm font-medium text-gray-300">{socialProof}</span>
+              </div>
+            )}
+
             <div className="prose prose-invert mb-6 md:mb-8">
               <h3 className="text-lg md:text-xl font-bold mb-2 text-white">Description</h3>
               <p className="text-gray-300 whitespace-pre-wrap text-sm md:text-base">{listing.ai_description || listing.description || "No description provided."}</p>
@@ -406,7 +471,6 @@ export default function ClientPage() {
               {isAuctionActive ? (
                 <>
                   {currentUser && userCountry === seller?.country ? (
-                    // WRAPPED IN FORM FOR ENTER KEY SUPPORT + SECURE API CALL
                     <form onSubmit={handlePlaceBid} className="flex-1 min-w-[200px] flex gap-2 w-full sm:w-auto">
                       <input 
                         type="number" 
