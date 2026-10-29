@@ -7,8 +7,18 @@ import Bouncer from '@/components/Bouncer'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Nabjo - The Global Marketplace for Everything',
-  description: 'Buy, sell, and trade anything, anywhere. Nabjo is the global marketplace connecting people worldwide.',
+  title: 'Nabjo - Scam-Proof Marketplace & Free AI Seller Tools',
+  description: 'The safest place to buy and sell online. Features a free in-browser AI background remover, live video verification, and QR-code safe handoffs. No scams, no fees.',
+  keywords: ['marketplace', 'buy and sell', 'AI background remover', 'scam proof', 'OLX alternative', 'Facebook marketplace alternative', 'free AI tools for sellers', 'Nabjo', 'safe marketplace', 'QR handoff', 'live video verification'],
+  
+  openGraph: {
+    title: 'Nabjo - Scam-Proof Marketplace & Free AI Tools',
+    description: 'Stop getting scammed on marketplaces. Use Nabjo for safe QR handoffs, live video verification, and free AI listing tools.',
+    url: 'https://listpro-ochre.vercel.app',
+    siteName: 'Nabjo',
+    type: 'website',
+    locale: 'en_US',
+  },
   
   // 🛡️ GOOGLE SEARCH CONSOLE VERIFICATION
   verification: {
