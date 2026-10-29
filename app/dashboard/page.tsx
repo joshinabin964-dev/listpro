@@ -5,33 +5,89 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import LocationSetup from "@/components/LocationSetup";
 
-// THE GLOBAL CURRENCY MAP (Preserved exactly as provided)
+// 🌍 FULLY EXPANDED GLOBAL CURRENCY MAP (Nothing reduced, everything added!)
 const currencyMap: Record<string, { symbol: string; code: string }> = {
-  "Nepal": { symbol: "Rs.", code: "NPR" }, "India": { symbol: "₹", code: "INR" },
-  "Pakistan": { symbol: "Rs.", code: "PKR" }, "Bangladesh": { symbol: "৳", code: "BDT" },
-  "USA": { symbol: "$", code: "USD" }, "United States": { symbol: "$", code: "USD" },
-  "UK": { symbol: "£", code: "GBP" }, "United Kingdom": { symbol: "£", code: "GBP" },
-  "Canada": { symbol: "C$", code: "CAD" }, "Australia": { symbol: "A$", code: "AUD" },
-  "New Zealand": { symbol: "NZ$", code: "NZD" }, "China": { symbol: "¥", code: "CNY" },
-  "Japan": { symbol: "¥", code: "JPY" }, "South Korea": { symbol: "₩", code: "KRW" },
-  "Singapore": { symbol: "S$", code: "SGD" }, "Malaysia": { symbol: "RM", code: "MYR" },
-  "Indonesia": { symbol: "Rp", code: "IDR" }, "Thailand": { symbol: "฿", code: "THB" },
-  "Vietnam": { symbol: "₫", code: "VND" }, "Philippines": { symbol: "₱", code: "PHP" },
-  "UAE": { symbol: "د.إ", code: "AED" }, "Saudi Arabia": { symbol: "﷼", code: "SAR" },
-  "Qatar": { symbol: "﷼", code: "QAR" }, "Kuwait": { symbol: "د.ك", code: "KWD" },
-  "Oman": { symbol: "﷼", code: "OMR" }, "Israel": { symbol: "₪", code: "ILS" },
-  "Turkey": { symbol: "₺", code: "TRY" }, "Egypt": { symbol: "£", code: "EGP" },
-  "South Africa": { symbol: "R", code: "ZAR" }, "Nigeria": { symbol: "₦", code: "NGN" },
-  "Kenya": { symbol: "KSh", code: "KES" }, "Ghana": { symbol: "₵", code: "GHS" },
-  "Germany": { symbol: "€", code: "EUR" }, "France": { symbol: "€", code: "EUR" },
-  "Italy": { symbol: "€", code: "EUR" }, "Spain": { symbol: "€", code: "EUR" },
-  "Switzerland": { symbol: "CHF", code: "CHF" }, "Sweden": { symbol: "kr", code: "SEK" },
-  "Norway": { symbol: "kr", code: "NOK" }, "Denmark": { symbol: "kr", code: "DKK" },
-  "Poland": { symbol: "zł", code: "PLN" }, "Russia": { symbol: "₽", code: "RUB" },
-  "Ukraine": { symbol: "₴", code: "UAH" }, "Brazil": { symbol: "R$", code: "BRL" },
-  "Argentina": { symbol: "$", code: "ARS" }, "Mexico": { symbol: "$", code: "MXN" },
-  "Colombia": { symbol: "$", code: "COP" }, "Chile": { symbol: "$", code: "CLP" },
-  "Peru": { symbol: "S/.", code: "PEN" }, "default": { symbol: "$", code: "USD" }
+  "Afghanistan": { symbol: "؋", code: "AFN" },
+  "Albania": { symbol: "L", code: "ALL" },
+  "Algeria": { symbol: "دج", code: "DZD" },
+  "Argentina": { symbol: "$", code: "ARS" },
+  "Australia": { symbol: "A$", code: "AUD" },
+  "Austria": { symbol: "€", code: "EUR" },
+  "Bangladesh": { symbol: "৳", code: "BDT" },
+  "Belgium": { symbol: "€", code: "EUR" },
+  "Bolivia": { symbol: "Bs.", code: "BOB" },
+  "Brazil": { symbol: "R$", code: "BRL" },
+  "Canada": { symbol: "C$", code: "CAD" },
+  "Chile": { symbol: "$", code: "CLP" },
+  "China": { symbol: "¥", code: "CNY" },
+  "Colombia": { symbol: "$", code: "COP" },
+  "Costa Rica": { symbol: "₡", code: "CRC" },
+  "Croatia": { symbol: "€", code: "EUR" },
+  "Cuba": { symbol: "$", code: "CUP" },
+  "Czech Republic": { symbol: "Kč", code: "CZK" },
+  "Denmark": { symbol: "kr", code: "DKK" },
+  "Ecuador": { symbol: "$", code: "USD" },
+  "Egypt": { symbol: "£", code: "EGP" },
+  "Finland": { symbol: "€", code: "EUR" },
+  "France": { symbol: "€", code: "EUR" },
+  "Germany": { symbol: "€", code: "EUR" },
+  "Ghana": { symbol: "₵", code: "GHS" },
+  "Greece": { symbol: "€", code: "EUR" },
+  "Hong Kong": { symbol: "HK$", code: "HKD" },
+  "Hungary": { symbol: "Ft", code: "HUF" },
+  "Iceland": { symbol: "kr", code: "ISK" },
+  "India": { symbol: "₹", code: "INR" },
+  "Indonesia": { symbol: "Rp", code: "IDR" },
+  "Iran": { symbol: "﷼", code: "IRR" },
+  "Iraq": { symbol: "ع.د", code: "IQD" },
+  "Ireland": { symbol: "€", code: "EUR" },
+  "Israel": { symbol: "₪", code: "ILS" },
+  "Italy": { symbol: "€", code: "EUR" },
+  "Jamaica": { symbol: "J$", code: "JMD" },
+  "Japan": { symbol: "¥", code: "JPY" },
+  "Jordan": { symbol: "د.ا", code: "JOD" },
+  "Kenya": { symbol: "KSh", code: "KES" },
+  "Kuwait": { symbol: "د.ك", code: "KWD" },
+  "Lebanon": { symbol: "ل.ل", code: "LBP" },
+  "Malaysia": { symbol: "RM", code: "MYR" },
+  "Mexico": { symbol: "$", code: "MXN" },
+  "Morocco": { symbol: "د.م.", code: "MAD" },
+  "Nepal": { symbol: "Rs.", code: "NPR" },
+  "Netherlands": { symbol: "€", code: "EUR" },
+  "New Zealand": { symbol: "NZ$", code: "NZD" },
+  "Nigeria": { symbol: "₦", code: "NGN" },
+  "Norway": { symbol: "kr", code: "NOK" },
+  "Oman": { symbol: "﷼", code: "OMR" },
+  "Pakistan": { symbol: "Rs.", code: "PKR" },
+  "Peru": { symbol: "S/.", code: "PEN" },
+  "Philippines": { symbol: "₱", code: "PHP" },
+  "Poland": { symbol: "zł", code: "PLN" },
+  "Portugal": { symbol: "€", code: "EUR" },
+  "Qatar": { symbol: "﷼", code: "QAR" },
+  "Romania": { symbol: "lei", code: "RON" },
+  "Russia": { symbol: "₽", code: "RUB" },
+  "Saudi Arabia": { symbol: "﷼", code: "SAR" },
+  "Singapore": { symbol: "S$", code: "SGD" },
+  "South Africa": { symbol: "R", code: "ZAR" },
+  "South Korea": { symbol: "₩", code: "KRW" },
+  "Spain": { symbol: "€", code: "EUR" },
+  "Sri Lanka": { symbol: "Rs", code: "LKR" },
+  "Sweden": { symbol: "kr", code: "SEK" },
+  "Switzerland": { symbol: "CHF", code: "CHF" },
+  "Taiwan": { symbol: "NT$", code: "TWD" },
+  "Thailand": { symbol: "฿", code: "THB" },
+  "Turkey": { symbol: "₺", code: "TRY" },
+  "UAE": { symbol: "د.إ", code: "AED" },
+  "Ukraine": { symbol: "₴", code: "UAH" },
+  "United Kingdom": { symbol: "£", code: "GBP" },
+  "UK": { symbol: "£", code: "GBP" },
+  "United States": { symbol: "$", code: "USD" },
+  "USA": { symbol: "$", code: "USD" },
+  "Uruguay": { symbol: "$U", code: "UYU" },
+  "Venezuela": { symbol: "Bs.S", code: "VES" },
+  "Vietnam": { symbol: "₫", code: "VND" },
+  "Zimbabwe": { symbol: "Z$", code: "ZWL" },
+  "default": { symbol: "$", code: "USD" }
 };
 
 const getSymbol = (country: string | null) => {
@@ -50,14 +106,12 @@ export default function DashboardPage() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
   
-  // 🛡️ EDGE CASE: Prevent double-clicks and handle click-outside
   const [processingNotif, setProcessingNotif] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   
   const router = useRouter();
 
-  // 🔄 Extracted fetch logic so it can be called on mount AND on update
   const fetchData = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { router.push("/login"); return; }
@@ -90,23 +144,17 @@ export default function DashboardPage() {
   }, [router]);
 
   useEffect(() => {
-    // 1. Fetch on initial load
     fetchData();
-
-    // 2. Listen for the "profileUpdated" event from LocationSetup or Profile pages
     const handleProfileUpdate = () => {
-      setLoading(true); // Briefly show loading state for smooth transition
+      setLoading(true);
       fetchData();
     };
-
     window.addEventListener('profileUpdated', handleProfileUpdate);
-
     return () => {
       window.removeEventListener('profileUpdated', handleProfileUpdate);
     };
   }, [fetchData]);
 
-  // 🛡️ EDGE CASE: Close notification dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
@@ -163,7 +211,6 @@ export default function DashboardPage() {
                 )}
               </button>
               {showNotifications && (
-                // 📱 MOBILE POLISH: Added max-w-[calc(100vw-2rem)] to prevent off-screen clipping on small phones
                 <div className="absolute right-0 mt-2 w-72 sm:w-80 max-w-[calc(100vw-2rem)] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
                   <div className="p-3 border-b border-gray-800 bg-gray-800/50">
                     <h3 className="font-bold text-sm text-white">Recent Activity</h3>
@@ -249,7 +296,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* 📱 MOBILE POLISH: Added sm:col-span-2 md:col-span-1 to the last item so it centers nicely on tablet screens */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
           <Link href="/generate" className="block">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-blue-500 transition cursor-pointer group">
@@ -298,6 +344,20 @@ export default function DashboardPage() {
               <span className="text-3xl md:text-4xl mb-3 md:mb-4 block">⚡</span>
               <h3 className="text-xl md:text-2xl font-bold mb-2 group-hover:text-cyan-400 transition">Bulk Optimizer</h3>
               <p className="text-sm md:text-base text-gray-400">Format CSVs for Daraz, Shopify, Amazon & Etsy.</p>
+            </div>
+          </Link>
+          
+          {/* ✨ NEW: AI Background Remover Card */}
+          <Link href="/tools/background-remover" className="block sm:col-span-2 md:col-span-1">
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-indigo-500 transition cursor-pointer group relative overflow-hidden">
+              <div className="absolute top-4 right-4">
+                <span className="bg-green-500/10 text-green-400 text-[10px] md:text-xs font-bold px-2 py-1 rounded-full border border-green-500/20">
+                  100% FREE
+                </span>
+              </div>
+              <span className="text-3xl md:text-4xl mb-3 md:mb-4 block">✨</span>
+              <h3 className="text-xl md:text-2xl font-bold mb-2 group-hover:text-indigo-400 transition">AI Background Remover</h3>
+              <p className="text-sm md:text-base text-gray-400">Instantly remove backgrounds from listing photos to make them look professional.</p>
             </div>
           </Link>
         </div>
