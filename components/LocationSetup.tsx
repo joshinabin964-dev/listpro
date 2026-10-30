@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import CountrySelect from './CountrySelect'; // 🆕 Import the new dropdown
+import CountrySelect from './CountrySelect';
 
 export default function LocationSetup() {
   const [country, setCountry] = useState('');
@@ -21,29 +21,58 @@ export default function LocationSetup() {
   }, []);
 
   const handleSave = async () => {
-    if (!country) { setStatus('Please select a country first.'); return; }
+    if (!country) { 
+      setStatus('Please select a country first.'); 
+      return; 
+    }
+    
     setStatus('Requesting location access...');
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) { 
+      setStatus('Error: User not found.'); 
+      return; 
+    }
 
-    if (!navigator.geolocation) { setStatus('Geolocation is not supported by your browser.'); return; }
+    let lat = null;
+    let lon = null;
 
-    navigator.geolocation.getCurrentPosition(async (position) => {
-      const { latitude, longitude } = position.coords;
-      setStatus('Saving your location...');
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (user) {
-        const { error } = await supabase.from('profiles').update({ country, latitude, longitude }).eq('id', user.id);
-        if (error) {
-          setStatus('Error saving data: ' + error.message);
-        } else {
-          setStatus('✅ Saved!');
-          window.dispatchEvent(new Event('profileUpdated'));
-          setTimeout(() => setIsHidden(true), 1500);
-        }
+    // Try to get GPS, but with a 5-second timeout so it NEVER hangs forever
+    if (navigator.geolocation) {
+      try {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            timeout: 5000, // 5 second max wait
+            maximumAge: 0
+          });
+        });
+        lat = position.coords.latitude;
+        lon = position.coords.longitude;
+      } catch (error) {
+        // GPS failed, denied, or timed out. THAT IS OK. We still save the country.
+        console.log("Location access denied or timed out. Saving country only.");
       }
-    }, (error) => {
-      setStatus('Location access denied. Please allow location permissions.');
-    });
+    }
+
+    setStatus('Saving your profile...');
+    
+    // THIS RUNS NO MATTER WHAT. Country is always saved.
+    const { error } = await supabase
+      .from('profiles')
+      .update({ 
+        country, 
+        latitude: lat, 
+        longitude: lon 
+      })
+      .eq('id', user.id);
+
+    if (error) {
+      setStatus('Error saving data: ' + error.message);
+    } else {
+      setStatus('✅ Saved! Currency updated.');
+      window.dispatchEvent(new Event('profileUpdated'));
+      setTimeout(() => setIsHidden(true), 1500);
+    }
   };
 
   if (hasCountry || isHidden) return null;
@@ -51,9 +80,8 @@ export default function LocationSetup() {
   return (
     <div className="bg-gray-800 p-6 rounded-lg mb-6 border border-gray-700 animate-in fade-in slide-in-from-top-4 duration-500">
       <h2 className="text-xl font-bold mb-4 text-white">📍 Setup Your Location</h2>
-      <p className="text-gray-400 mb-4 text-sm">Select your country and allow location access to see nearby products and correct currency.</p>
+      <p className="text-gray-400 mb-4 text-sm">Select your country to see the correct currency. (GPS is optional)</p>
       
-      {/* 🆕 REPLACED BASIC INPUT WITH COUNTRY SELECT */}
       <CountrySelect 
         value={country} 
         onChange={setCountry} 
@@ -62,7 +90,8 @@ export default function LocationSetup() {
       
       <button
         onClick={handleSave}
-        className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded transition"
+        className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded transition disabled:opacity-50"
+        disabled={status.includes('Saving')}
       >
         Save My Location
       </button>
