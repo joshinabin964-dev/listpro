@@ -8,6 +8,7 @@ export default function InboxPage() {
   const [conversations, setConversations] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [lastSynced, setLastSynced] = useState<string>("");
   const router = useRouter();
 
   useEffect(() => {
@@ -22,20 +23,28 @@ export default function InboxPage() {
     initChat();
   }, [router]);
 
-  // 🚀 NEW: POLLING FOR MOBILE (Checks every 5 seconds)
+  // 🚀 THE FIX: Polling + Focus Listener
   useEffect(() => {
     if (!currentUser) return;
 
-    // Fetch immediately
-    fetchConversations(currentUser.id);
-
-    // Then fetch every 5 seconds (Bulletproof for mobile networks!)
-    const interval = setInterval(() => {
+    const syncData = () => {
       fetchConversations(currentUser.id);
-    }, 5000);
+      setLastSynced(new Date().toLocaleTimeString());
+    };
 
-    // Cleanup interval when component unmounts
-    return () => clearInterval(interval);
+    // 1. Poll every 5 seconds
+    const interval = setInterval(syncData, 5000);
+
+    // 2. FORCE SYNC when user opens the app (Switches from PC to Phone)
+    const handleFocus = () => syncData();
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, [currentUser]);
 
   const fetchConversations = async (userId: string) => {
@@ -52,6 +61,7 @@ export default function InboxPage() {
         const listing = msg.listings;
         const key = `${msg.listing_id}-${otherUser?.id}`;
         
+        // 🛠️ THE BUG FIX: Update existing conversations with new messages
         if (!convos[key]) {
           convos[key] = {
             id: key,
@@ -63,6 +73,12 @@ export default function InboxPage() {
             last_message_time: msg.created_at,
             unread_count: 0
           };
+        } else {
+          // If conversation exists, update it ONLY if this message is newer
+          if (new Date(msg.created_at) > new Date(convos[key].last_message_time)) {
+            convos[key].last_message = msg.content;
+            convos[key].last_message_time = msg.created_at;
+          }
         }
       });
       
@@ -89,24 +105,21 @@ export default function InboxPage() {
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
           <Link href="/dashboard"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Nabjo</h1></Link>
-          <Link href="/dashboard"><button className="px-3 md:px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition">Back</button></Link>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-gray-500">Synced: {lastSynced}</span>
+            <button 
+              onClick={() => currentUser && fetchConversations(currentUser.id)}
+              className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition"
+            >
+              🔄
+            </button>
+          </div>
         </div>
       </nav>
 
       <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-12">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-2xl md:text-4xl font-bold mb-2">My Inbox</h1>
-            <p className="text-gray-400 text-sm md:text-lg">Messages from buyers and sellers.</p>
-          </div>
-          {/* Manual refresh button for mobile users */}
-          <button 
-            onClick={() => currentUser && fetchConversations(currentUser.id)}
-            className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition"
-          >
-            🔄
-          </button>
-        </div>
+        <h1 className="text-2xl md:text-4xl font-bold mb-2">My Inbox</h1>
+        <p className="text-gray-400 text-sm md:text-lg mb-6 md:mb-8">Messages from buyers and sellers.</p>
 
         {conversations.length === 0 ? (
           <div className="text-center py-16 md:py-20 bg-gray-900 rounded-2xl border border-gray-800">
@@ -147,13 +160,8 @@ export default function InboxPage() {
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-[10px] md:text-xs text-gray-500">
-                        {conv.last_message_time ? new Date(conv.last_message_time).toLocaleDateString() : "Recently"}
+                        {conv.last_message_time ? new Date(conv.last_message_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Recently"}
                       </p>
-                      {conv.unread_count > 0 && (
-                        <span className="inline-block mt-1 md:mt-2 px-2 py-1 bg-blue-600 text-white text-[10px] md:text-xs font-bold rounded-full">
-                          {conv.unread_count} new
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>
