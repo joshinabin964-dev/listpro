@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef } from "react";
+import { removeBackground } from "@imgly/background-removal";
 import Link from "next/link";
 
 export default function BackgroundRemoverPage() {
@@ -11,10 +12,10 @@ export default function BackgroundRemoverPage() {
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 📱 Detect if user is on mobile
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  // 📱 Detect mobile to apply aggressive optimizations
+  const isMobile = /Android|webOS|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-  // Compress image before sending to save upload time
+  // Compress image to save mobile RAM and network bandwidth
   const compressImage = (file: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -24,7 +25,8 @@ export default function BackgroundRemoverPage() {
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement("canvas");
-          const MAX_DIMENSION = 1024; 
+          // 768px is the sweet spot for mobile
+          const MAX_DIMENSION = isMobile ? 768 : 1024; 
           let width = img.width;
           let height = img.height;
 
@@ -63,8 +65,8 @@ export default function BackgroundRemoverPage() {
     setError(null);
     setProcessedImage(null);
     setIsProcessing(true);
-    setProgress(10);
-    setStatusText("Preparing image...");
+    setProgress(5);
+    setStatusText("Optimizing image...");
 
     const reader = new FileReader();
     reader.onload = (e) => setOriginalImage(e.target?.result as string);
@@ -73,79 +75,34 @@ export default function BackgroundRemoverPage() {
     try {
       const compressedBlob = await compressImage(file);
       
-      // 🚀 MOBILE USERS: Automatically use the Server API
-      if (isMobile) {
-        setStatusText("Uploading to server (Mobile optimized)...");
-        setProgress(30);
-        
-        const formData = new FormData();
-        formData.append('image', compressedBlob, 'image.jpg');
-        
-        const response = await fetch('/api/remove-background', {
-          method: 'POST',
-          body: formData,
-        });
-        
-        setProgress(70);
-        
-        if (!response.ok) {
-          throw new Error('Server processing failed');
-        }
-        
-        const data = await response.json();
-        setProgress(100);
-        setProcessedImage(data.image);
-        setStatusText("Done! Processed on server.");
-        
-      } else {
-        // DESKTOP USERS: Try client-side first
-        setStatusText("Loading AI model in browser...");
-        setProgress(20);
-        
-        try {
-          const { removeBackground } = await import("@imgly/background-removal");
+      setStatusText("Downloading AI Model (This may take a moment on mobile)...");
+      setProgress(15);
+      
+      //  THE MAGIC FIX: Force CDN and Small Model
+      const blob = await removeBackground(compressedBlob, {
+        model: "small", // Uses the 30MB model instead of 100MB+
+        publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal-data@latest/dist/", // 🌍 Forces Global CDN (Fixes mobile 0% hang!)
+        output: { format: "image/png", quality: 0.9 },
+        progress: (key: string, current: number, total: number) => {
+          const percent = Math.round((current / total) * 100);
+          setProgress(Math.min(95, 15 + (percent * 0.8)));
           
-          setStatusText("Processing with AI...");
-          setProgress(40);
-          
-          const blob = await removeBackground(compressedBlob, {
-            model: "small",
-            output: { format: "image/png", quality: 0.9 },
-            progress: (key: string, current: number, total: number) => {
-              const percent = Math.round((current / total) * 100);
-              setProgress(Math.min(90, 40 + percent / 2));
-            },
-          });
-          
-          const url = URL.createObjectURL(blob);
-          setProcessedImage(url);
-          setProgress(100);
-          setStatusText("Done!");
-          
-        } catch (clientError) {
-          console.error("Client-side failed, falling back to server:", clientError);
-          setStatusText("Browser failed. Switching to server...");
-          
-          // Fallback to server if desktop browser fails
-          const formData = new FormData();
-          formData.append('image', compressedBlob, 'image.jpg');
-          
-          const response = await fetch('/api/remove-background', {
-            method: 'POST',
-            body: formData,
-          });
-          
-          if (!response.ok) throw new Error('All methods failed');
-          
-          const data = await response.json();
-          setProcessedImage(data.image);
-          setStatusText("Done! (Server fallback)");
-        }
-      }
+          if (key.includes("fetch") || key.includes("download")) {
+            setStatusText(`Downloading AI Model: ${percent}%`);
+          } else if (key.includes("compute")) {
+            setStatusText(`Processing Image: ${percent}%`);
+          }
+        },
+      });
+
+      const url = URL.createObjectURL(blob);
+      setProcessedImage(url);
+      setProgress(100);
+      setStatusText("Done! Background removed.");
       
     } catch (err: any) {
       console.error(err);
-      setError("Failed to process image. Try a smaller file.");
+      setError("Mobile browser blocked the AI. Try a smaller image or use Desktop.");
     } finally {
       setIsProcessing(false);
     }
@@ -170,7 +127,7 @@ export default function BackgroundRemoverPage() {
             AI Background Remover
           </h1>
           <p className="text-gray-400">
-            {isMobile ? "📱 Mobile detected - Using fast server processing" : "100% Free. Runs in your browser."}
+            {isMobile ? "📱 Mobile Optimized - Using Lite AI Model" : "100% Free. Runs in your browser."}
           </p>
         </div>
 
@@ -186,7 +143,7 @@ export default function BackgroundRemoverPage() {
             />
             <div className="text-6xl mb-4">📸</div>
             <h2 className="text-xl font-bold mb-2">Click to Upload Image</h2>
-            <p className="text-gray-500 text-sm">Mobile users: Images processed on our fast servers</p>
+            <p className="text-gray-500 text-sm">100% Private. No API keys. No servers.</p>
           </div>
         )}
 
