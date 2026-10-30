@@ -8,12 +8,7 @@ export default function InboxPage() {
   const [conversations, setConversations] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [lastSynced, setLastSynced] = useState<string>("");
-  
-  // 🐛 DEBUG STATES
-  const [debugUserId, setDebugUserId] = useState("");
-  const [debugMsgCount, setDebugMsgCount] = useState(0);
-
+  const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -22,44 +17,20 @@ export default function InboxPage() {
       if (!session) { router.push("/login"); return; }
       
       setCurrentUser(session.user);
-      setDebugUserId(session.user.id); // Show ID on screen
-      await fetchConversations(session.user.id);
+      await loadInbox(session.user.id);
       setLoading(false);
     };
     initChat();
   }, [router]);
 
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const syncData = () => {
-      fetchConversations(currentUser.id);
-      setLastSynced(new Date().toLocaleTimeString());
-    };
-
-    const interval = setInterval(syncData, 5000);
-    const handleFocus = () => syncData();
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleFocus);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleFocus);
-    };
-  }, [currentUser]);
-
-  const fetchConversations = async (userId: string) => {
-    const { data: messages, error } = await supabase
+  const loadInbox = async (userId: string) => {
+    setRefreshing(true);
+    
+    const { data: messages } = await supabase
       .from("messages")
       .select("*, listings(product_name, image_url), sender:sender_id(full_name), receiver:receiver_id(full_name)")
       .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
       .order("created_at", { ascending: false });
-
-    if (error) console.error("Supabase Error:", error);
-    
-    // 🐛 Update debug count
-    setDebugMsgCount(messages?.length || 0);
 
     if (messages) {
       const convos: any = {};
@@ -79,11 +50,6 @@ export default function InboxPage() {
             last_message_time: msg.created_at,
             unread_count: 0
           };
-        } else {
-          if (new Date(msg.created_at) > new Date(convos[key].last_message_time)) {
-            convos[key].last_message = msg.content;
-            convos[key].last_message_time = msg.created_at;
-          }
         }
       });
       
@@ -91,6 +57,8 @@ export default function InboxPage() {
         new Date(b.last_message_time).getTime() - new Date(a.last_message_time).getTime()
       ));
     }
+    
+    setRefreshing(false);
   };
 
   if (loading) return (
@@ -104,25 +72,23 @@ export default function InboxPage() {
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
           <Link href="/dashboard"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Nabjo</h1></Link>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-gray-500">Synced: {lastSynced}</span>
-            <button onClick={() => currentUser && fetchConversations(currentUser.id)} className="p-2 bg-gray-800 rounded-lg">🔄</button>
-          </div>
+          <button 
+            onClick={() => currentUser && loadInbox(currentUser.id)}
+            disabled={refreshing}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 rounded-lg text-sm font-bold transition flex items-center gap-2"
+          >
+            {refreshing ? "⏳ Loading..." : "🔄 Refresh Inbox"}
+          </button>
         </div>
       </nav>
 
-      {/* 🐛 DEBUG BOX - THIS WILL TELL US EXACTLY WHAT IS WRONG */}
-      {currentUser && (
-        <div className="bg-yellow-900/30 border border-yellow-700 p-4 m-4 rounded text-xs font-mono text-yellow-200 break-all">
-          <p className="font-bold mb-2">🐛 DEBUG MODE:</p>
-          <p>My User ID: {debugUserId}</p>
-          <p>Raw Messages Found in DB: {debugMsgCount}</p>
-          <p>Conversations Grouped: {conversations.length}</p>
-          <button onClick={() => fetchConversations(currentUser.id)} className="mt-2 bg-yellow-700 px-3 py-1 rounded text-white font-bold">Force Refresh Data</button>
-        </div>
-      )}
-
       <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-12">
+        <div className="bg-yellow-900/20 border border-yellow-700 p-4 rounded-lg mb-6">
+          <p className="text-yellow-400 text-sm">
+            📱 <strong>Mobile Note:</strong> Tap "Refresh Inbox" to check for new messages. Real-time sync will work in the native app.
+          </p>
+        </div>
+
         <h1 className="text-2xl md:text-4xl font-bold mb-2">My Inbox</h1>
         <p className="text-gray-400 text-sm md:text-lg mb-6 md:mb-8">Messages from buyers and sellers.</p>
 
@@ -130,7 +96,7 @@ export default function InboxPage() {
           <div className="text-center py-16 md:py-20 bg-gray-900 rounded-2xl border border-gray-800">
             <h3 className="text-xl md:text-2xl font-bold text-white mb-2">Your inbox is empty</h3>
             <p className="text-gray-400 text-sm md:text-base mb-6">
-              {debugMsgCount > 0 ? "We found messages but couldn't group them. Check User IDs." : "No messages found for your User ID."}
+              No messages yet. Tap "Refresh Inbox" after sending a message.
             </p>
             <Link href="/marketplace">
               <button className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition">
