@@ -22,8 +22,33 @@ export default function InboxPage() {
     initChat();
   }, [router]);
 
+  // 🚀 NEW: REALTIME LISTENER FOR INBOX
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const channel = supabase
+      .channel(`inbox:${currentUser.id}`)
+      .on(
+        "postgres_changes",
+        { 
+          event: "INSERT", 
+          schema: "public", 
+          table: "messages", 
+          filter: `receiver_id=eq.${currentUser.id}` 
+        },
+        async () => {
+          // A new message arrived! Refresh the inbox to show the updated conversation.
+          await fetchConversations(currentUser.id);
+        }
+      )
+      .subscribe();
+
+    return () => { 
+      supabase.removeChannel(channel); 
+    };
+  }, [currentUser]);
+
   const fetchConversations = async (userId: string) => {
-    // Get all messages where user is sender or receiver
     const { data: messages } = await supabase
       .from("messages")
       .select("*, listings(product_name, image_url), sender:sender_id(full_name), receiver:receiver_id(full_name)")
@@ -31,7 +56,6 @@ export default function InboxPage() {
       .order("created_at", { ascending: false });
 
     if (messages) {
-      // Group messages by conversation (unique pairing of users + listing)
       const convos: any = {};
       messages.forEach((msg: any) => {
         const otherUser = msg.sender_id === userId ? msg.receiver : msg.sender;
@@ -71,7 +95,6 @@ export default function InboxPage() {
   );
 
   return (
-    // 📱 MOBILE POLISH: Adjusted main container padding
     <main className="min-h-screen bg-gray-950 text-white">
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
@@ -80,13 +103,11 @@ export default function InboxPage() {
         </div>
       </nav>
 
-      {/* 📱 MOBILE POLISH: Adjusted padding and text sizes */}
       <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-12">
         <h1 className="text-2xl md:text-4xl font-bold mb-2">My Inbox</h1>
         <p className="text-gray-400 text-sm md:text-lg mb-6 md:mb-8">Messages from buyers and sellers.</p>
 
         {conversations.length === 0 ? (
-          /* ✨ NEW: Premium Empty State */
           <div className="text-center py-16 md:py-20 bg-gray-900 rounded-2xl border border-gray-800">
             <div className="inline-flex items-center justify-center w-16 h-16 md:w-20 md:h-20 rounded-full bg-gray-800 mb-4 md:mb-6">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 md:h-10 md:w-10 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -111,7 +132,6 @@ export default function InboxPage() {
                 href={`/chat/${conv.listing_id}?user=${conv.other_user?.id}`}
                 className="block"
               >
-                {/* 📱 MOBILE POLISH: Adjusted padding, image size, and gaps for mobile */}
                 <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4 md:p-6 hover:border-blue-500 transition cursor-pointer group">
                   <div className="flex items-center gap-3 md:gap-4">
                     {conv.listing_image ? (
