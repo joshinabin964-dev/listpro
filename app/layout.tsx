@@ -2,6 +2,7 @@ import './globals.css'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Toaster } from 'react-hot-toast'
+import { Analytics } from "@vercel/analytics/react"
 import Bouncer from '@/components/Bouncer'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -50,6 +51,9 @@ export default function RootLayout({
             },
           }}
         />
+        
+        {/* 📊 VERCEL ANALYTICS: Tracks visitors and page views */}
+        <Analytics />
       </body>
     </html>
   )
