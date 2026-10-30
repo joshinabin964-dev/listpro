@@ -22,30 +22,20 @@ export default function InboxPage() {
     initChat();
   }, [router]);
 
-  // 🚀 NEW: REALTIME LISTENER FOR INBOX
+  // 🚀 NEW: POLLING FOR MOBILE (Checks every 5 seconds)
   useEffect(() => {
     if (!currentUser) return;
 
-    const channel = supabase
-      .channel(`inbox:${currentUser.id}`)
-      .on(
-        "postgres_changes",
-        { 
-          event: "INSERT", 
-          schema: "public", 
-          table: "messages", 
-          filter: `receiver_id=eq.${currentUser.id}` 
-        },
-        async () => {
-          // A new message arrived! Refresh the inbox to show the updated conversation.
-          await fetchConversations(currentUser.id);
-        }
-      )
-      .subscribe();
+    // Fetch immediately
+    fetchConversations(currentUser.id);
 
-    return () => { 
-      supabase.removeChannel(channel); 
-    };
+    // Then fetch every 5 seconds (Bulletproof for mobile networks!)
+    const interval = setInterval(() => {
+      fetchConversations(currentUser.id);
+    }, 5000);
+
+    // Cleanup interval when component unmounts
+    return () => clearInterval(interval);
   }, [currentUser]);
 
   const fetchConversations = async (userId: string) => {
@@ -104,8 +94,19 @@ export default function InboxPage() {
       </nav>
 
       <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-12">
-        <h1 className="text-2xl md:text-4xl font-bold mb-2">My Inbox</h1>
-        <p className="text-gray-400 text-sm md:text-lg mb-6 md:mb-8">Messages from buyers and sellers.</p>
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-2xl md:text-4xl font-bold mb-2">My Inbox</h1>
+            <p className="text-gray-400 text-sm md:text-lg">Messages from buyers and sellers.</p>
+          </div>
+          {/* Manual refresh button for mobile users */}
+          <button 
+            onClick={() => currentUser && fetchConversations(currentUser.id)}
+            className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition"
+          >
+            🔄
+          </button>
+        </div>
 
         {conversations.length === 0 ? (
           <div className="text-center py-16 md:py-20 bg-gray-900 rounded-2xl border border-gray-800">
