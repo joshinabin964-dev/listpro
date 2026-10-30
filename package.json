@@ -9,6 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
     "@google/generative-ai": "^0.24.1",
     "@huggingface/inference": "^4.13.32",
     "@imgly/background-removal": "^1.7.0",
@@ -21,12 +24,14 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-hot-toast": "^2.6.1",
-    "resend": "^6.34.1"
+    "resend": "^6.34.1",
+    "uuid": "^14.0.3"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.6.1",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",

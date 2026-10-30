@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
+import LiveVideoVerification from "@/components/LiveVideoVerification"; // 👈 NEW IMPORT
 
 export default function ChatRoomPage() {
   const { listing_id } = useParams();
@@ -214,6 +215,11 @@ export default function ChatRoomPage() {
         <p className="text-[10px] md:text-xs text-yellow-400">
           ⚠️ <strong>Safety Tip:</strong> Keep all conversations on Nabjo. Never share personal info or pay via outside apps.
         </p>
+      </div>
+
+      {/* 🛡️ LIVE VIDEO VERIFICATION COMPONENT INSERTED HERE */}
+      <div className="max-w-4xl mx-auto w-full px-4 md:px-6 pt-4 shrink-0">
+        <LiveVideoVerification listingId={listing_id as string} />
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 max-w-4xl mx-auto w-full">
