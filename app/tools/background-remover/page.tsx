@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { removeBackground } from "@imgly/background-removal";
 import Link from "next/link";
 
@@ -8,11 +8,11 @@ export default function BackgroundRemoverPage() {
   const [processedImage, setProcessedImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [statusText, setStatusText] = useState("");
+  const [statusText, setStatusText] = useState("Ready");
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  //  CRITICAL FIX: Compress/Resize image for mobile to prevent RAM crashes
+  // 📱 CRITICAL FIX: Shrink image to 768px for mobile to prevent RAM crashes
   const compressImage = (file: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -22,7 +22,8 @@ export default function BackgroundRemoverPage() {
         img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement("canvas");
-          const MAX_DIMENSION = 1024; // Keep it under 1024px to save mobile RAM
+          // 768px is the sweet spot for mobile AI. High enough quality, low enough RAM.
+          const MAX_DIMENSION = 768; 
           let width = img.width;
           let height = img.height;
 
@@ -45,7 +46,7 @@ export default function BackgroundRemoverPage() {
               else reject(new Error("Image compression failed"));
             },
             "image/jpeg",
-            0.9
+            0.8 // 80% quality saves even more memory
           );
         };
         img.onerror = reject;
@@ -64,34 +65,52 @@ export default function BackgroundRemoverPage() {
     setProgress(0);
     setStatusText("Optimizing image for mobile...");
 
-    // Show original preview
     const reader = new FileReader();
     reader.onload = (e) => setOriginalImage(e.target?.result as string);
     reader.readAsDataURL(file);
 
+    // Timeout safety: If mobile Chrome hangs, kill it after 45 seconds
+    const timeoutId = setTimeout(() => {
+      setIsProcessing(false);
+      setError("Mobile browser timed out. Please try a smaller image or use Desktop.");
+      setStatusText("Failed");
+    }, 45000);
+
     try {
-      // 1. Compress the image first (Prevents Android crashes!)
+      // 1. Compress the image first
       const processedBlob = await compressImage(file);
       
-      setStatusText("Loading AI Model (First time takes ~10s)...");
+      setStatusText("Downloading AI Model (First time takes ~15s)...");
       
-      // 2. Run the AI Background Remover
+      // 2. Run the AI Background Remover with MOBILE OPTIMIZATIONS
       const blob = await removeBackground(processedBlob, {
+        model: "small", // 🚀 FORCES THE LITE MODEL (Crucial for Android!)
+        output: { format: "image/png", quality: 0.8 },
         progress: (key: string, current: number, total: number) => {
           const percent = Math.round((current / total) * 100);
           setProgress(percent);
-          if (key.includes("fetch")) setStatusText(`Downloading AI Model: ${percent}%`);
-          else if (key.includes("compute")) setStatusText(`Processing Image: ${percent}%`);
+          
+          if (key.includes("fetch") || key.includes("download")) {
+            setStatusText(`Downloading AI Model: ${percent}%`);
+          } else if (key.includes("compute") || key.includes("process")) {
+            setStatusText(`Processing Image: ${percent}%`);
+          } else {
+            setStatusText(`Working... ${percent}%`);
+          }
         },
       });
+
+      clearTimeout(timeoutId); // Stop the timeout if successful
 
       // 3. Show Result
       const url = URL.createObjectURL(blob);
       setProcessedImage(url);
       setStatusText("Done! Background removed successfully.");
     } catch (err: any) {
+      clearTimeout(timeoutId);
       console.error(err);
-      setError("Failed to remove background. Try a smaller image or use Desktop.");
+      setError("Failed to remove background. The image might be too complex for mobile.");
+      setStatusText("Error");
     } finally {
       setIsProcessing(false);
     }
@@ -119,7 +138,7 @@ export default function BackgroundRemoverPage() {
         </div>
 
         {/* Upload Area */}
-        {!originalImage && (
+        {!originalImage && !isProcessing && (
           <div className="border-2 border-dashed border-gray-700 rounded-2xl p-12 text-center hover:border-blue-500 transition cursor-pointer bg-gray-900/50"
                onClick={() => fileInputRef.current?.click()}>
             <input 
@@ -199,7 +218,7 @@ export default function BackgroundRemoverPage() {
         {/* Mobile Warning */}
         <div className="mt-12 p-4 bg-yellow-900/20 border border-yellow-800 rounded-xl text-center">
           <p className="text-yellow-400 text-xs md:text-sm">
-             <strong>Pro Tip for Mobile:</strong> If the app crashes, try taking a screenshot of your photo and uploading the screenshot instead. It reduces the file size!
+             📱 <strong>Pro Tip for Mobile:</strong> If the app crashes, try taking a screenshot of your photo and uploading the screenshot instead. It reduces the file size!
           </p>
         </div>
       </div>
