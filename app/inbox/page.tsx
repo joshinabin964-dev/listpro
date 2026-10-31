@@ -9,6 +9,12 @@ export default function InboxPage() {
   const [conversations, setConversations] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  
+  // 🐛 DEBUG STATES
+  const [debugUserId, setDebugUserId] = useState("");
+  const [debugRawMessages, setDebugRawMessages] = useState<any[]>([]);
+  const [debugError, setDebugError] = useState("");
+
   const router = useRouter();
 
   useEffect(() => {
@@ -17,13 +23,14 @@ export default function InboxPage() {
       if (!session) { router.push("/login"); return; }
       
       setCurrentUser(session.user);
+      setDebugUserId(session.user.id);
       await fetchConversations(session.user.id);
       setLoading(false);
     };
     initChat();
   }, [router]);
 
-  // 🚀 REALTIME LISTENER FOR NATIVE APP
+  // 🚀 REALTIME LISTENER
   useEffect(() => {
     if (!currentUser) return;
 
@@ -39,30 +46,30 @@ export default function InboxPage() {
         },
         (payload) => {
           console.log('New message received:', payload.new);
-          
-          // Show a notification toast
-          toast.success('📩 New message received!', {
-            duration: 3000,
-            position: 'top-center',
-          });
-
-          // Refresh the inbox immediately
+          toast.success('📩 New message received!', { duration: 3000, position: 'top-center' });
           fetchConversations(currentUser.id);
         }
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [currentUser]);
 
   const fetchConversations = async (userId: string) => {
-    const { data: messages } = await supabase
+    setDebugError("");
+    
+    const { data: messages, error } = await supabase
       .from("messages")
       .select("*, listings(product_name, image_url), sender:sender_id(full_name), receiver:receiver_id(full_name)")
       .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
       .order("created_at", { ascending: false });
+
+    if (error) {
+      setDebugError(error.message);
+      console.error("Supabase Fetch Error:", error);
+    } else {
+      setDebugRawMessages(messages || []);
+    }
 
     if (messages) {
       const convos: any = {};
@@ -107,31 +114,40 @@ export default function InboxPage() {
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
           <Link href="/dashboard"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Nabjo</h1></Link>
-          <button 
-            onClick={() => currentUser && fetchConversations(currentUser.id)}
-            className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition"
-          >
-            🔄
-          </button>
+          <button onClick={() => currentUser && fetchConversations(currentUser.id)} className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition">🔄</button>
         </div>
       </nav>
 
-      <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-12">
-        
-        {/* 🛡️ WHO AM I? BADGE - Shows exactly who is logged in! */}
-        {currentUser && (
-          <div className="bg-purple-900/30 border border-purple-700 p-3 mb-6 rounded-lg text-center text-sm text-purple-200 break-all">
-            Logged in as: <strong>{currentUser.email}</strong>
-          </div>
-        )}
+      {/* 🐛 DEBUG PANEL - THIS WILL TELL US EXACTLY WHAT IS WRONG */}
+      {currentUser && (
+        <div className="bg-yellow-900/30 border border-yellow-700 p-4 m-4 rounded text-xs font-mono text-yellow-200 break-all">
+          <p className="font-bold mb-2 text-base">🐛 DEBUG MODE:</p>
+          <p>1. My User ID: <span className="text-white">{debugUserId}</span></p>
+          <p>2. Raw Messages Found: <span className="text-white">{debugRawMessages.length}</span></p>
+          <p>3. Grouped Conversations: <span className="text-white">{conversations.length}</span></p>
+          {debugError && <p className="text-red-400 mt-2">ERROR: {debugError}</p>}
+          
+          {debugRawMessages.length > 0 && (
+            <details className="mt-2 cursor-pointer">
+              <summary className="text-white font-bold">Tap to see raw message data</summary>
+              <pre className="mt-2 bg-black/50 p-2 rounded text-[10px] overflow-x-auto">
+                {JSON.stringify(debugRawMessages.slice(0, 2), null, 2)}
+              </pre>
+            </details>
+          )}
+        </div>
+      )}
 
+      <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-12">
         <h1 className="text-2xl md:text-4xl font-bold mb-2">My Inbox</h1>
         <p className="text-gray-400 text-sm md:text-lg mb-6 md:mb-8">Messages from buyers and sellers.</p>
 
         {conversations.length === 0 ? (
           <div className="text-center py-16 md:py-20 bg-gray-900 rounded-2xl border border-gray-800">
             <h3 className="text-xl md:text-2xl font-bold text-white mb-2">Your inbox is empty</h3>
-            <p className="text-gray-400 text-sm md:text-base mb-6">No messages yet.</p>
+            <p className="text-gray-400 text-sm md:text-base mb-6">
+              {debugRawMessages.length > 0 ? "We found messages in the database, but the grouping logic failed. Check the debug box above." : "No messages found for your User ID."}
+            </p>
             <Link href="/marketplace">
               <button className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition">
                 🌍 Browse the Marketplace
