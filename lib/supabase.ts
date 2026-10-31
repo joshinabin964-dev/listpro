@@ -12,22 +12,36 @@ export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKe
   },
 });
 
-export const signInWithGoogle = async () => {
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
+// 🚀 1. TRADITIONAL EMAIL + PASSWORD LOGIN
+export const signInWithEmailPassword = async (email: string, password: string) => {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email,
+    password: password,
+  });
+  return { data, error };
+};
+
+// 🚀 2. TRADITIONAL SIGN UP
+export const signUpWithEmailPassword = async (email: string, password: string, fullName: string) => {
+  const { data, error } = await supabase.auth.signUp({
+    email: email,
+    password: password,
     options: {
-      redirectTo: 'https://listpro-ochre.vercel.app/auth/callback',
+      data: {
+        full_name: fullName, // Save their name to the profile
+      },
     },
   });
   return { data, error };
 };
 
-export const signInWithEmail = async (email: string) => {
-  const { data, error } = await supabase.auth.signInWithOtp({
-    email: email,
+// 🚀 3. GOOGLE LOGIN (Keep this just in case)
+export const signInWithGoogle = async () => {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
     options: {
-      // 🚀 Custom app scheme so Android opens the app, not Chrome!
-      emailRedirectTo: 'com.nabjo.app://login-callback', 
+      redirectTo: 'https://listpro-ochre.vercel.app/auth/callback',
+      queryParams: { prompt: 'select_account' },
     },
   });
   return { data, error };

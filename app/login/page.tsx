@@ -6,40 +6,68 @@ import toast from "react-hot-toast";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [linkSent, setLinkSent] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false); // Toggle between Login and Sign Up
   const router = useRouter();
 
   const handleGoogleLogin = async () => {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/dashboard` },
+      options: { 
+        redirectTo: `${window.location.origin}/dashboard`,
+        queryParams: { prompt: 'select_account' }
+      },
     });
     if (error) toast.error("Google login failed: " + error.message);
     setLoading(false);
   };
 
-  const handleMagicLink = async (e: React.FormEvent) => {
+  const handleEmailPasswordAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (!email.includes('@')) return toast.error("Please enter a valid email.");
+    if (password.length < 6) return toast.error("Password must be at least 6 characters.");
+    
     setLoading(true);
     
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim().toLowerCase(),
-        options: {
-          shouldCreateUser: true,
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-        },
-      });
-      
-      if (error) throw error;
-      
-      toast.success("Sign-in link sent! Check your inbox.");
-      setLinkSent(true);
+      if (isSignUp) {
+        // SIGN UP FLOW
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim().toLowerCase(),
+          password: password,
+          options: {
+            data: {
+              full_name: email.split('@')[0], // Auto-generate a name from email
+            },
+          },
+        });
+        
+        if (error) throw error;
+        toast.success("Account created! Logging you in...");
+        router.push("/dashboard");
+      } else {
+        // LOG IN FLOW
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password: password,
+        });
+        
+        if (error) {
+          if (error.message.includes("Invalid login credentials")) {
+            toast.error("Invalid email or password. Try signing up instead!");
+          } else {
+            throw error;
+          }
+        } else {
+          toast.success("Welcome back!");
+          router.push("/dashboard");
+        }
+      }
     } catch (error: any) {
-      toast.error(error.message || "Failed to send link.");
+      toast.error(error.message || "Authentication failed.");
     } finally {
       setLoading(false);
     }
@@ -53,7 +81,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Nabjo</h1>
           <p className="text-gray-400 text-sm">
-            {linkSent ? "Check your email and click the link to login." : "Sign in securely to the safest marketplace."}
+            {isSignUp ? "Create your secure account." : "Sign in securely to the safest marketplace."}
           </p>
         </div>
         
@@ -64,34 +92,55 @@ export default function LoginPage() {
 
         <div className="relative flex py-2 items-center mb-6">
           <div className="flex-grow border-t border-gray-700"></div>
-          <span className="flex-shrink mx-4 text-gray-500 text-xs">OR SECURE EMAIL LOGIN</span>
+          <span className="flex-shrink mx-4 text-gray-500 text-xs">OR USE EMAIL & PASSWORD</span>
           <div className="flex-grow border-t border-gray-700"></div>
         </div>
 
-        {!linkSent ? (
-          <form onSubmit={handleMagicLink} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1.5">Email Address</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full p-3.5 bg-gray-950 border border-gray-800 rounded-xl text-white focus:outline-none focus:border-blue-500 transition-all text-base" placeholder="you@example.com" />
-              <p className="text-xs text-gray-500 mt-2">We will send a secure sign-in link. One click to login!</p>
-            </div>
-            <button type="submit" disabled={loading} className="w-full p-3.5 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold rounded-xl transition-all disabled:opacity-70">
-              {loading ? "Sending Link..." : "Send Sign-In Link"}
-            </button>
-          </form>
-        ) : (
-          <div className="space-y-5 text-center py-4">
-            <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-            </div>
-            <h3 className="text-xl font-bold text-white">Check your inbox!</h3>
-            <p className="text-gray-400 text-sm">We sent a sign-in link to <span className="text-white font-bold">{email}</span>. Click it to log in instantly.</p>
-            <p className="text-xs text-gray-500">Didn't get it? Check your spam folder.</p>
-            <button onClick={() => { setLinkSent(false); setEmail(""); }} className="w-full p-3.5 bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold rounded-xl transition-all text-sm mt-4">
-              ← Use a different email
-            </button>
+        <form onSubmit={handleEmailPasswordAuth} className="space-y-5">
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-1.5">Email Address</label>
+            <input 
+              type="email" 
+              value={email} 
+              onChange={(e) => setEmail(e.target.value)} 
+              required 
+              className="w-full p-3.5 bg-gray-950 border border-gray-800 rounded-xl text-white focus:outline-none focus:border-blue-500 transition-all text-base" 
+              placeholder="you@example.com" 
+            />
           </div>
-        )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-1.5">Password</label>
+            <input 
+              type="password" 
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)} 
+              required 
+              className="w-full p-3.5 bg-gray-950 border border-gray-800 rounded-xl text-white focus:outline-none focus:border-blue-500 transition-all text-base" 
+              placeholder="••••••••" 
+            />
+          </div>
+
+          <button 
+            type="submit" 
+            disabled={loading} 
+            className="w-full p-3.5 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold rounded-xl transition-all disabled:opacity-70"
+          >
+            {loading ? "Processing..." : (isSignUp ? "Create Account" : "Log In")}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <p className="text-sm text-gray-400">
+            {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
+            <button 
+              onClick={() => setIsSignUp(!isSignUp)} 
+              className="text-blue-400 hover:text-blue-300 font-bold transition-colors"
+            >
+              {isSignUp ? "Log In" : "Sign Up"}
+            </button>
+          </p>
+        </div>
       </div>
     </main>
   );
