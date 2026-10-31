@@ -3,12 +3,12 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import toast from "react-hot-toast";
 
 export default function InboxPage() {
   const [conversations, setConversations] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -17,15 +17,48 @@ export default function InboxPage() {
       if (!session) { router.push("/login"); return; }
       
       setCurrentUser(session.user);
-      await loadInbox(session.user.id);
+      await fetchConversations(session.user.id);
       setLoading(false);
     };
     initChat();
   }, [router]);
 
-  const loadInbox = async (userId: string) => {
-    setRefreshing(true);
-    
+  // 🚀 REALTIME LISTENER FOR NATIVE APP
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const channel = supabase
+      .channel('inbox-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `receiver_id=eq.${currentUser.id}`
+        },
+        (payload) => {
+          // A new message arrived!
+          console.log('New message received:', payload.new);
+          
+          // Show a notification toast
+          toast.success('📩 New message received!', {
+            duration: 3000,
+            position: 'top-center',
+          });
+
+          // Refresh the inbox immediately
+          fetchConversations(currentUser.id);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser]);
+
+  const fetchConversations = async (userId: string) => {
     const { data: messages } = await supabase
       .from("messages")
       .select("*, listings(product_name, image_url), sender:sender_id(full_name), receiver:receiver_id(full_name)")
@@ -50,6 +83,11 @@ export default function InboxPage() {
             last_message_time: msg.created_at,
             unread_count: 0
           };
+        } else {
+          if (new Date(msg.created_at) > new Date(convos[key].last_message_time)) {
+            convos[key].last_message = msg.content;
+            convos[key].last_message_time = msg.created_at;
+          }
         }
       });
       
@@ -57,8 +95,6 @@ export default function InboxPage() {
         new Date(b.last_message_time).getTime() - new Date(a.last_message_time).getTime()
       ));
     }
-    
-    setRefreshing(false);
   };
 
   if (loading) return (
@@ -73,31 +109,22 @@ export default function InboxPage() {
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
           <Link href="/dashboard"><h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Nabjo</h1></Link>
           <button 
-            onClick={() => currentUser && loadInbox(currentUser.id)}
-            disabled={refreshing}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 rounded-lg text-sm font-bold transition flex items-center gap-2"
+            onClick={() => currentUser && fetchConversations(currentUser.id)}
+            className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition"
           >
-            {refreshing ? "⏳ Loading..." : "🔄 Refresh Inbox"}
+            🔄
           </button>
         </div>
       </nav>
 
       <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-12">
-        <div className="bg-yellow-900/20 border border-yellow-700 p-4 rounded-lg mb-6">
-          <p className="text-yellow-400 text-sm">
-            📱 <strong>Mobile Note:</strong> Tap "Refresh Inbox" to check for new messages. Real-time sync will work in the native app.
-          </p>
-        </div>
-
         <h1 className="text-2xl md:text-4xl font-bold mb-2">My Inbox</h1>
         <p className="text-gray-400 text-sm md:text-lg mb-6 md:mb-8">Messages from buyers and sellers.</p>
 
         {conversations.length === 0 ? (
           <div className="text-center py-16 md:py-20 bg-gray-900 rounded-2xl border border-gray-800">
             <h3 className="text-xl md:text-2xl font-bold text-white mb-2">Your inbox is empty</h3>
-            <p className="text-gray-400 text-sm md:text-base mb-6">
-              No messages yet. Tap "Refresh Inbox" after sending a message.
-            </p>
+            <p className="text-gray-400 text-sm md:text-base mb-6">No messages yet.</p>
             <Link href="/marketplace">
               <button className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition">
                 🌍 Browse the Marketplace
