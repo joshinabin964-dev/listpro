@@ -23,7 +23,22 @@ export default function ChatRoomPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/login"); return; }
       setCurrentUser(session.user);
-      await fetchMessages(session.user.id, otherUserId as string, listing_id as string);
+      
+      // Fetch ALL messages for this listing
+      const { data } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("listing_id", listing_id)
+        .order("created_at", { ascending: true });
+      
+      if (data) {
+        // Filter in JavaScript to only show messages between me and the other user
+        const filtered = data.filter(m => 
+          (m.sender_id === session.user.id && m.receiver_id === otherUserId) ||
+          (m.sender_id === otherUserId && m.receiver_id === session.user.id)
+        );
+        setMessages(filtered);
+      }
       setLoading(false);
     };
     initChat();
@@ -35,26 +50,18 @@ export default function ChatRoomPage() {
     const channel = supabase
       .channel(`chat:${listing_id}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `listing_id=eq.${listing_id}` }, (payload) => {
-        setMessages((prev) => {
-          if (prev.find(m => m.id === payload.new.id)) return prev;
-          return [...prev, payload.new];
-        });
+        const newMsg = payload.new;
+        // Only add if it's between me and the other user
+        if ((newMsg.sender_id === currentUser.id && newMsg.receiver_id === otherUserId) ||
+            (newMsg.sender_id === otherUserId && newMsg.receiver_id === currentUser.id)) {
+          setMessages((prev) => [...prev, newMsg]);
+        }
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [currentUser, listing_id]);
+  }, [currentUser, listing_id, otherUserId]);
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
-
-  const fetchMessages = async (userId: string, targetUserId: string, listingId: string) => {
-    const { data } = await supabase
-      .from("messages")
-      .select("*")
-      .or(`and(sender_id.eq.${userId},receiver_id.eq.${targetUserId}),and(sender_id.eq.${targetUserId},receiver_id.eq.${userId})`)
-      .eq("listing_id", listingId)
-      .order("created_at", { ascending: true });
-    if (data) setMessages(data);
-  };
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,25 +81,29 @@ export default function ChatRoomPage() {
   return (
     <main className="flex flex-col h-screen bg-gray-950 text-white">
       <nav className="border-b border-gray-800 bg-gray-950 p-4 flex justify-between items-center">
-        <Link href="/inbox" className="text-blue-400">← Back</Link>
+        <Link href="/inbox" className="text-blue-400">← Inbox</Link>
         <h2 className="font-bold">Chat</h2>
         <div className="w-10"></div>
       </nav>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg) => {
-          const isMine = msg.sender_id === currentUser?.id;
-          return (
-            <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[80%] px-4 py-2 rounded-2xl ${isMine ? "bg-blue-600" : "bg-gray-800"}`}>
-                <p className="text-sm">{msg.content}</p>
-                <p className="text-[10px] text-right mt-1 opacity-70">
-                  {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </p>
+        {messages.length === 0 ? (
+          <p className="text-center text-gray-500 mt-10">No messages yet. Say hello! 👋</p>
+        ) : (
+          messages.map((msg) => {
+            const isMine = msg.sender_id === currentUser?.id;
+            return (
+              <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[80%] px-4 py-2 rounded-2xl ${isMine ? "bg-blue-600" : "bg-gray-800"}`}>
+                  <p className="text-sm">{msg.content}</p>
+                  <p className="text-[10px] text-right mt-1 opacity-70">
+                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
         <div ref={messagesEndRef} />
       </div>
 
