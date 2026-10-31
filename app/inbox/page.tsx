@@ -38,7 +38,6 @@ export default function InboxPage() {
           filter: `receiver_id=eq.${currentUser.id}`
         },
         (payload) => {
-          // A new message arrived!
           console.log('New message received:', payload.new);
           
           // Show a notification toast
@@ -118,6 +117,14 @@ export default function InboxPage() {
       </nav>
 
       <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-12">
+        
+        {/* 🛡️ WHO AM I? BADGE - Shows exactly who is logged in! */}
+        {currentUser && (
+          <div className="bg-purple-900/30 border border-purple-700 p-3 mb-6 rounded-lg text-center text-sm text-purple-200 break-all">
+            Logged in as: <strong>{currentUser.email}</strong>
+          </div>
+        )}
+
         <h1 className="text-2xl md:text-4xl font-bold mb-2">My Inbox</h1>
         <p className="text-gray-400 text-sm md:text-lg mb-6 md:mb-8">Messages from buyers and sellers.</p>
 

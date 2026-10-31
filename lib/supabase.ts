@@ -15,12 +15,11 @@ export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKe
 });
 
 // 3. Helper Function for Google Login
-// We use your normal Vercel URL here so Google doesn't throw a 400 error!
 export const signInWithGoogle = async () => {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      // This tells Google to send the user back to your website after login
+      // Use the normal website URL so Google doesn't throw a 400 error!
       redirectTo: 'https://listpro-ochre.vercel.app/auth/callback', 
     },
   });
@@ -33,7 +32,6 @@ export const signInWithEmail = async (email: string) => {
   const { data, error } = await supabase.auth.signInWithOtp({
     email: email,
     options: {
-      // This tells Supabase where to send the user after they click the email link
       emailRedirectTo: 'https://listpro-ochre.vercel.app/auth/callback',
     },
   });

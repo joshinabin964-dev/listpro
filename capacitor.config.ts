@@ -7,6 +7,7 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://listpro-ochre.vercel.app',
     cleartext: true,
+    // This traps the login redirect inside the app!
     allowNavigation: ['listpro-ochre.vercel.app', '*.supabase.co', 'accounts.google.com', 'google.com']
   }
 };
