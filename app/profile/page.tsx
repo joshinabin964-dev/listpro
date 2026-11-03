@@ -1,97 +1,202 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import CountrySelect from "@/components/CountrySelect"; // 🆕 Import the new dropdown
 
 export default function ProfilePage() {
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState({ full_name: "", country: "", phone: "", bio: "" });
+  const [user, setUser] = useState<any>(null);
+  const [uploading, setUploading] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
+  const [fullName, setFullName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   useEffect(() => {
-    const loadProfile = async () => {
+    const getProfile = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/login"); return; }
-      const { data } = await supabase.from("profiles").select("full_name, country, phone, bio").eq("id", session.user.id).single();
-      if (data) setFormData({ full_name: data.full_name || "", country: data.country || "", phone: data.phone || "", bio: data.bio || "" });
-      setLoading(false);
+      
+      setUser(session.user);
+      
+      // Fetch current profile
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("full_name, avatar_url")
+        .eq("id", session.user.id)
+        .single();
+        
+      if (data) {
+        setFullName(data.full_name || "");
+        setAvatarUrl(data.avatar_url || "");
+      }
     };
-    loadProfile();
+    getProfile();
   }, [router]);
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+  // 🔥 THE AVATAR UPLOAD MAGIC
+  const uploadAvatar = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      setUploading(true);
+      if (!event.target.files || event.target.files.length === 0) {
+        throw new Error('Please select an image.');
+      }
 
-    const { error } = await supabase.from("profiles").update({
-      full_name: formData.full_name.trim(), country: formData.country.trim(), phone: formData.phone.trim(), bio: formData.bio.trim()
-    }).eq("id", session.user.id);
+      const file = event.target.files[0];
+      
+      // Check file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        throw new Error('Image must be less than 2MB.');
+      }
 
-    if (error) { toast.error("Failed to save profile: " + error.message); } 
-    else { 
-      toast.success("Profile updated successfully! 🎉"); 
-      window.dispatchEvent(new Event('profileUpdated'));
-      router.refresh(); 
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${user.id}/${Date.now()}.${fileExt}`;
+
+      // 1. Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // 2. Get the public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      setAvatarUrl(publicUrl);
+
+      // 3. Update the database profile
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .upsert({ 
+          id: user.id, 
+          avatar_url: publicUrl,
+          full_name: fullName,
+          updated_at: new Date().toISOString()
+        });
+
+      if (updateError) throw updateError;
+      
+      toast.success('Profile picture updated! 📸');
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      toast.error(error.message || 'Failed to upload image. Check storage setup.');
+    } finally {
+      setUploading(false);
     }
-    setSaving(false);
   };
 
-  if (loading) return <main className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><p>Loading Profile...</p></main>;
+  const updateName = async () => {
+    const { error } = await supabase
+      .from('profiles')
+      .upsert({ 
+        id: user.id, 
+        full_name: fullName,
+        updated_at: new Date().toISOString()
+      });
+      
+    if (error) toast.error('Failed to update name');
+    else toast.success('Name updated successfully!');
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
+
+  if (!user) return (
+    <div className="flex items-center justify-center h-screen bg-gray-950 text-white">
+      Loading profile...
+    </div>
+  );
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
-      <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-purple-500 bg-clip-text text-transparent">My Profile</h1>
-          <Link href="/dashboard"><button className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition">Back to Dashboard</button></Link>
-        </div>
+    <main className="min-h-screen bg-gray-950 text-white pb-20">
+      {/* Header */}
+      <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md p-4 flex justify-between items-center sticky top-0 z-50">
+        <Link href="/dashboard" className="text-blue-400 hover:text-blue-300 font-medium">← Back</Link>
+        <h1 className="text-lg font-bold">Profile Settings</h1>
+        <div className="w-10"></div>
       </nav>
 
-      <div className="max-w-2xl mx-auto px-6 py-12">
-        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-8 shadow-xl">
-          <h2 className="text-2xl font-bold mb-2">Seller Information</h2>
-          <p className="text-gray-400 mb-8 text-sm">This information will be displayed on your public listings to build trust with buyers.</p>
-
-          <form onSubmit={handleSave} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Full Name / Store Name *</label>
-              <input type="text" required value={formData.full_name} onChange={(e) => setFormData({ ...formData, full_name: e.target.value })} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-pink-500 transition" placeholder="e.g. John Doe or Tech Store" />
+      <div className="max-w-md mx-auto p-6 space-y-8">
+        
+        {/* 🔥 AVATAR UPLOAD SECTION */}
+        <div className="flex flex-col items-center space-y-4">
+          <div className="relative group">
+            <div className="w-32 h-32 rounded-full bg-gray-800 border-4 border-gray-700 flex items-center justify-center overflow-hidden shadow-2xl">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-4xl font-bold text-gray-400">
+                  {fullName ? fullName.charAt(0).toUpperCase() : user.email?.charAt(0).toUpperCase() || "U"}
+                </span>
+              )}
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Country *</label>
-              {/* 🆕 REPLACED BASIC INPUT WITH COUNTRY SELECT */}
-              <CountrySelect 
-                value={formData.country} 
-                onChange={(val) => setFormData({ ...formData, country: val })} 
-                placeholder="Start typing your country..." 
-              />
-              <p className="text-xs text-gray-500 mt-1">This determines the currency symbol shown on your dashboard and listings.</p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Phone Number (Optional)</label>
-              <input type="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-pink-500 transition" placeholder="e.g. +1 234 567 8900" />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Seller Bio (Optional)</label>
-              <textarea rows={4} value={formData.bio} onChange={(e) => setFormData({ ...formData, bio: e.target.value })} className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl text-white focus:outline-none focus:border-pink-500 transition resize-none" placeholder="Tell buyers a little about yourself..." />
-            </div>
-
-            <div className="pt-4">
-              <button type="submit" disabled={saving} className="w-full p-4 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white text-lg font-bold rounded-xl transition disabled:opacity-50 flex justify-center items-center gap-2">
-                {saving ? (<><span className="animate-spin">⚙️</span> Saving...</>) : ("💾 Save Profile")}
-              </button>
-            </div>
-          </form>
+            
+            {/* Upload Button */}
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="absolute bottom-0 right-0 bg-blue-600 hover:bg-blue-500 p-2.5 rounded-full shadow-lg border-2 border-gray-950 transition disabled:opacity-50"
+            >
+              {uploading ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-white">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+                </svg>
+              )}
+            </button>
+            
+            {/* Hidden File Input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png, image/jpeg, image/jpg"
+              onChange={uploadAvatar}
+              className="hidden"
+            />
+          </div>
+          <p className="text-sm text-gray-400">Tap the camera icon to change photo</p>
         </div>
+
+        {/* NAME EDIT SECTION */}
+        <div className="space-y-2">
+          <label className="text-sm font-bold text-gray-400">Display Name</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="Enter your name"
+              className="flex-1 bg-gray-900 border border-gray-800 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 transition"
+            />
+            <button 
+              onClick={updateName}
+              className="bg-blue-600 hover:bg-blue-500 px-6 rounded-xl font-bold transition"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+
+        {/* ACCOUNT INFO */}
+        <div className="bg-gray-900 rounded-2xl p-4 border border-gray-800 space-y-2">
+          <p className="text-xs text-gray-500">Email Address</p>
+          <p className="text-white font-medium break-all">{user.email}</p>
+        </div>
+
+        {/* LOGOUT BUTTON */}
+        <button 
+          onClick={handleLogout}
+          className="w-full bg-red-900/20 border border-red-900/50 text-red-400 hover:bg-red-900/40 py-4 rounded-2xl font-bold transition mt-8"
+        >
+          Sign Out
+        </button>
       </div>
     </main>
   );
