@@ -71,7 +71,6 @@ export default function ProfilePage() {
       await supabase.from('profiles').upsert({ 
         id: user.id, 
         avatar_url: publicUrl
-        // REMOVED updated_at
       });
       
       toast.success('Profile picture updated! 📸');
@@ -90,7 +89,6 @@ export default function ProfilePage() {
       full_name: fullName,
       phone_number: phoneNumber,
       country: country
-      // REMOVED updated_at
     });
     
     if (error) toast.error('Failed to save details: ' + error.message);
@@ -117,7 +115,6 @@ export default function ProfilePage() {
           id: user.id,
           latitude: lat,
           longitude: lng
-          // REMOVED updated_at
         });
 
         if (error) {
@@ -201,15 +198,16 @@ export default function ProfilePage() {
             type="tel"
             value={phoneNumber}
             onChange={(e) => setPhoneNumber(e.target.value)}
-            placeholder="Mobile Number (e.g., +977 98XXXXXXXX)"
+            placeholder="Mobile Number"
             className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 transition"
           />
           
+          {/* ✅ FIXED: Removed "Nepal" example */}
           <input
             type="text"
             value={country}
             onChange={(e) => setCountry(e.target.value)}
-            placeholder="Country (e.g., Nepal)"
+            placeholder="Country"
             className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 transition"
           />
 
