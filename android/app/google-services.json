@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "533454735290",
+    "project_id": "nabjo-9d6cb",
+    "storage_bucket": "nabjo-9d6cb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:533454735290:android:2922cfb65adeaa90883f83",
+        "android_client_info": {
+          "package_name": "com.nabjo.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcmt3FOhU2-_lMljPP4o3MJpUaRmWa9mM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
