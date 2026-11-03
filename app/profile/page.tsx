@@ -29,6 +29,7 @@ export default function ProfilePage() {
       
       setUser(session.user);
       
+      // Fetch profile data
       const { data, error } = await supabase
         .from("profiles")
         .select("full_name, phone_number, country, avatar_url, latitude, longitude")
@@ -66,11 +67,11 @@ export default function ProfilePage() {
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
       setAvatarUrl(publicUrl);
 
-      // Save avatar URL to DB immediately
+      // Save avatar URL to DB
       await supabase.from('profiles').upsert({ 
         id: user.id, 
-        avatar_url: publicUrl,
-        updated_at: new Date().toISOString()
+        avatar_url: publicUrl
+        // REMOVED updated_at
       });
       
       toast.success('Profile picture updated! 📸');
@@ -88,8 +89,8 @@ export default function ProfilePage() {
       id: user.id, 
       full_name: fullName,
       phone_number: phoneNumber,
-      country: country,
-      updated_at: new Date().toISOString()
+      country: country
+      // REMOVED updated_at
     });
     
     if (error) toast.error('Failed to save details: ' + error.message);
@@ -115,8 +116,8 @@ export default function ProfilePage() {
         const { error } = await supabase.from('profiles').upsert({
           id: user.id,
           latitude: lat,
-          longitude: lng,
-          updated_at: new Date().toISOString()
+          longitude: lng
+          // REMOVED updated_at
         });
 
         if (error) {
