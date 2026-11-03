@@ -7,15 +7,17 @@ import toast from "react-hot-toast";
 
 export default function ProfilePage() {
   const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState<string>("");
-  const [fullName, setFullName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
   
-  // 🔥 NEW: Location State
+  // Profile States
+  const [fullName, setFullName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [country, setCountry] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
-  const [locationLoading, setLocationLoading] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -27,18 +29,17 @@ export default function ProfilePage() {
       
       setUser(session.user);
       
-      // Fetch current profile
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("profiles")
-        .select("*")
+        .select("full_name, phone_number, country, avatar_url, latitude, longitude")
         .eq("id", session.user.id)
         .single();
         
       if (data) {
-        setProfile(data);
         setFullName(data.full_name || "");
+        setPhoneNumber(data.phone_number || "");
+        setCountry(data.country || "");
         setAvatarUrl(data.avatar_url || "");
-        // 🔥 Load saved location
         setLatitude(data.latitude || null);
         setLongitude(data.longitude || null);
       }
@@ -46,43 +47,31 @@ export default function ProfilePage() {
     getProfile();
   }, [router]);
 
-  // 🔥 THE UPLOAD MAGIC (Added upsert: true for safety)
+  // 🔥 AVATAR UPLOAD
   const uploadAvatar = async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
       setUploading(true);
-      if (!event.target.files || event.target.files.length === 0) {
-        throw new Error('You must select an image to upload.');
-      }
+      if (!event.target.files || event.target.files.length === 0) return;
 
       const file = event.target.files[0];
       const fileExt = file.name.split('.').pop();
       const filePath = `${user.id}/${Date.now()}.${fileExt}`;
 
-      // 1. Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(filePath, file, { upsert: true }); // 🔥 Added upsert to prevent overwrite errors
+        .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
-      // 2. Get the public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
-
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
       setAvatarUrl(publicUrl);
 
-      // 3. Update the database
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .upsert({ 
-          id: user.id, 
-          avatar_url: publicUrl,
-          full_name: fullName,
-          updated_at: new Date().toISOString()
-        });
-
-      if (updateError) throw updateError;
+      // Save avatar URL to DB immediately
+      await supabase.from('profiles').upsert({ 
+        id: user.id, 
+        avatar_url: publicUrl,
+        updated_at: new Date().toISOString()
+      });
       
       toast.success('Profile picture updated! 📸');
     } catch (error: any) {
@@ -92,7 +81,23 @@ export default function ProfilePage() {
     }
   };
 
-  // 🔥 NEW: GET CURRENT LOCATION
+  // 🔥 SAVE NAME, PHONE, COUNTRY
+  const saveDetails = async () => {
+    setSaving(true);
+    const { error } = await supabase.from('profiles').upsert({ 
+      id: user.id, 
+      full_name: fullName,
+      phone_number: phoneNumber,
+      country: country,
+      updated_at: new Date().toISOString()
+    });
+    
+    if (error) toast.error('Failed to save details: ' + error.message);
+    else toast.success('Profile details saved! ✅');
+    setSaving(false);
+  };
+
+  // 🔥 GET CURRENT LOCATION
   const getCurrentLocation = async () => {
     if (!navigator.geolocation) {
       toast.error('Geolocation is not supported by your browser');
@@ -107,24 +112,23 @@ export default function ProfilePage() {
         setLatitude(lat);
         setLongitude(lng);
 
-        // Save to database
-        const { error } = await supabase
-          .from('profiles')
-          .upsert({
-            id: user.id,
-            latitude: lat,
-            longitude: lng,
-            updated_at: new Date().toISOString()
-          });
+        const { error } = await supabase.from('profiles').upsert({
+          id: user.id,
+          latitude: lat,
+          longitude: lng,
+          updated_at: new Date().toISOString()
+        });
 
         if (error) {
-          toast.error('Failed to save location');
+          console.error("Location save error:", error);
+          toast.error('Failed to save location: ' + error.message);
         } else {
           toast.success('Location saved successfully! 📍');
         }
         setLocationLoading(false);
       },
       (error) => {
+        console.error("Geolocation error:", error);
         toast.error('Unable to retrieve location: ' + error.message);
         setLocationLoading(false);
       },
@@ -132,29 +136,15 @@ export default function ProfilePage() {
     );
   };
 
-  const updateName = async () => {
-    const { error } = await supabase
-      .from('profiles')
-      .upsert({ 
-        id: user.id, 
-        full_name: fullName,
-        updated_at: new Date().toISOString()
-      });
-      
-    if (error) toast.error('Failed to update name');
-    else toast.success('Name updated!');
-  };
-
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/login');
   };
 
-  if (!user) return <div className="p-10 text-white">Loading...</div>;
+  if (!user) return <div className="p-10 text-white text-center">Loading profile...</div>;
 
   return (
     <main className="min-h-screen bg-gray-950 text-white pb-20">
-      {/* Header */}
       <nav className="border-b border-gray-800 bg-gray-950 p-4 flex justify-between items-center sticky top-0 z-50">
         <Link href="/dashboard" className="text-blue-400">← Back</Link>
         <h1 className="text-xl font-bold">Profile Settings</h1>
@@ -163,7 +153,7 @@ export default function ProfilePage() {
 
       <div className="max-w-md mx-auto p-6 space-y-8">
         
-        {/* 🔥 AVATAR UPLOAD SECTION */}
+        {/* AVATAR UPLOAD */}
         <div className="flex flex-col items-center space-y-4">
           <div className="relative group">
             <div className="w-32 h-32 rounded-full bg-gray-800 border-4 border-gray-700 flex items-center justify-center overflow-hidden shadow-2xl">
@@ -171,12 +161,10 @@ export default function ProfilePage() {
                 <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
               ) : (
                 <span className="text-4xl font-bold text-gray-500">
-                  {fullName ? fullName.charAt(0).toUpperCase() : user.email?.charAt(0).toUpperCase()}
+                  {fullName ? fullName.charAt(0).toUpperCase() : user.email?.charAt(0).toUpperCase() || "U"}
                 </span>
               )}
             </div>
-            
-            {/* Upload Button Overlay */}
             <button 
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
@@ -191,40 +179,49 @@ export default function ProfilePage() {
                 </svg>
               )}
             </button>
-            
-            {/* Hidden File Input */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={uploadAvatar}
-              className="hidden"
-            />
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={uploadAvatar} className="hidden" />
           </div>
           <p className="text-sm text-gray-400">Tap the camera icon to upload a photo</p>
         </div>
 
-        {/* NAME EDIT SECTION */}
-        <div className="space-y-2">
-          <label className="text-sm font-bold text-gray-400">Display Name</label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Enter your name"
-              className="flex-1 bg-gray-900 border border-gray-800 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 transition"
-            />
-            <button 
-              onClick={updateName}
-              className="bg-blue-600 hover:bg-blue-500 px-6 rounded-xl font-bold transition"
-            >
-              Save
-            </button>
-          </div>
+        {/* DETAILS FORM (Name, Phone, Country) */}
+        <div className="space-y-4">
+          <label className="text-sm font-bold text-gray-400">Personal Details</label>
+          
+          <input
+            type="text"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            placeholder="Full Name"
+            className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 transition"
+          />
+          
+          <input
+            type="tel"
+            value={phoneNumber}
+            onChange={(e) => setPhoneNumber(e.target.value)}
+            placeholder="Mobile Number (e.g., +977 98XXXXXXXX)"
+            className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 transition"
+          />
+          
+          <input
+            type="text"
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+            placeholder="Country (e.g., Nepal)"
+            className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 transition"
+          />
+
+          <button 
+            onClick={saveDetails}
+            disabled={saving}
+            className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl font-bold transition disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {saving ? 'Saving...' : 'Save Details'}
+          </button>
         </div>
 
-        {/* 🔥 NEW: LOCATION SECTION */}
+        {/* LOCATION SECTION */}
         <div className="space-y-2">
           <label className="text-sm font-bold text-gray-400">Your Location</label>
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
@@ -235,7 +232,7 @@ export default function ProfilePage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
                   </svg>
-                  Location saved & active
+                  Location active
                 </p>
                 <p className="text-xs text-gray-500">Lat: {latitude.toFixed(4)}, Lng: {longitude.toFixed(4)}</p>
                 <button 
@@ -272,10 +269,10 @@ export default function ProfilePage() {
         {/* ACCOUNT INFO */}
         <div className="bg-gray-900 rounded-2xl p-4 border border-gray-800 space-y-2">
           <p className="text-xs text-gray-500">Email Address</p>
-          <p className="text-white font-medium">{user.email}</p>
+          <p className="text-white font-medium break-all">{user.email}</p>
         </div>
 
-        {/* LOGOUT BUTTON */}
+        {/* LOGOUT */}
         <button 
           onClick={handleLogout}
           className="w-full bg-red-900/30 border border-red-800 text-red-400 hover:bg-red-900/50 py-4 rounded-2xl font-bold transition mt-8"
