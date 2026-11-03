@@ -12,7 +12,7 @@ export default function ChatRoomPage() {
   const router = useRouter();
   
   const [messages, setMessages] = useState<any[]>([]);
-  const [otherUser, setOtherUser] = useState<any>(null);
+  const [otherUser, setOtherUser] = useState<any>(null); // 🔥 NEW: To store their profile
   const [newMessage, setNewMessage] = useState("");
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -26,22 +26,17 @@ export default function ChatRoomPage() {
       if (!session) { router.push("/login"); return; }
       setCurrentUser(session.user);
       
-      // 🔥 FIX: Check if otherUserId exists
-      if (!otherUserId) {
-        toast.error("No user selected. Please go back to inbox.");
-        setLoading(false);
-        return;
-      }
-      
+      // 🔥 Fetch the other user's profile (Name & Picture)
       if (otherUserId) {
         const { data: profileData } = await supabase
           .from("profiles")
-          .select("full_name, avatar_url, username")
+          .select("full_name, avatar_url, username") // Adjust column names if yours are different!
           .eq("id", otherUserId)
           .single();
         setOtherUser(profileData);
       }
 
+      // Fetch existing messages
       const { data } = await supabase
         .from("messages")
         .select("*")
@@ -60,7 +55,7 @@ export default function ChatRoomPage() {
     initChat();
   }, [listing_id, otherUserId, router]);
 
-  // 2. LIVE REALTIME LISTENER
+  // 2. 🔥 LIVE REALTIME LISTENER (The "Messenger" Magic)
   useEffect(() => {
     if (!currentUser || !listing_id || !otherUserId) return;
     
@@ -74,10 +69,12 @@ export default function ChatRoomPage() {
       }, (payload) => {
         const newMsg = payload.new;
         
+        // Only update if the message is between me and the other user
         if ((newMsg.sender_id === currentUser.id && newMsg.receiver_id === otherUserId) ||
             (newMsg.sender_id === otherUserId && newMsg.receiver_id === currentUser.id)) {
           
           setMessages((prev) => {
+            // Prevent duplicates
             if (prev.find(m => m.id === newMsg.id)) return prev;
             return [...prev, newMsg];
           });
@@ -90,50 +87,36 @@ export default function ChatRoomPage() {
     };
   }, [currentUser, listing_id, otherUserId]);
 
+  // Auto-scroll to bottom
   useEffect(() => { 
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); 
   }, [messages]);
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // 🔥 FIX: Check if otherUserId exists
-    if (!otherUserId) {
-      toast.error("Cannot send message: User not found");
-      return;
-    }
-    
-    if (!newMessage.trim() || !currentUser || sending) return;
+    if (!newMessage.trim() || !currentUser || !otherUserId || sending) return;
     
     setSending(true);
     const tempId = Date.now(); 
-    const safeListingId = String(listing_id); 
-    
     const tempMsg = {
       id: tempId,
-      listing_id: safeListingId, 
-      sender_id: currentUser.id, 
-      receiver_id: otherUserId, 
-      content: newMessage.trim(), 
-      is_read: false,
+      listing_id, sender_id: currentUser.id, receiver_id: otherUserId, 
+      content: newMessage.trim(), is_read: false,
       created_at: new Date().toISOString()
     };
     
+    // Optimistic UI: Show it immediately
     setMessages((prev) => [...prev, tempMsg]);
     setNewMessage("");
     
     try {
       const { error } = await supabase.from("messages").insert({
-        listing_id: safeListingId, 
-        sender_id: currentUser.id, 
-        receiver_id: otherUserId, 
-        content: newMessage.trim(), 
-        is_read: false
+        listing_id, sender_id: currentUser.id, receiver_id: otherUserId, 
+        content: newMessage.trim(), is_read: false
       });
       if (error) throw error;
     } catch (error: any) { 
-      console.error("Chat send error:", error);
-      toast.error("Failed to send: " + error.message);
+      toast.error("Failed to send");
       setMessages((prev) => prev.filter(m => m.id !== tempId));
     } finally { 
       setSending(false); 
@@ -141,27 +124,18 @@ export default function ChatRoomPage() {
   };
 
   if (loading) return <div className="flex items-center justify-center h-screen bg-gray-950 text-white">Loading...</div>;
-  
-  // 🔥 FIX: Show error if no user
-  if (!otherUserId) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-gray-950 text-white">
-        <div className="text-center">
-          <p className="text-xl font-bold mb-4">No conversation selected</p>
-          <Link href="/inbox" className="text-blue-400">Go to Inbox →</Link>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <main className="flex flex-col h-screen bg-gray-950 text-white">
+      
+      {/* 🔥 NEW: CHAT HEADER WITH PROFILE */}
       <nav className="border-b border-gray-800 bg-gray-950 p-3 flex justify-between items-center sticky top-0 z-50 shadow-lg">
         <Link href="/inbox" className="text-blue-400 hover:text-blue-300 flex items-center gap-2">
           ← Back
         </Link>
         
         <div className="flex items-center gap-3">
+          {/* Profile Picture */}
           <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden border border-gray-600">
             {otherUser?.avatar_url ? (
               <img src={otherUser.avatar_url} alt="Profile" className="w-full h-full object-cover" />
@@ -171,6 +145,7 @@ export default function ChatRoomPage() {
               </span>
             )}
           </div>
+          {/* Name */}
           <div className="flex flex-col">
             <span className="font-bold text-sm text-white leading-tight">
               {otherUser?.full_name || "User"}
@@ -179,9 +154,10 @@ export default function ChatRoomPage() {
           </div>
         </div>
 
-        <div className="w-16"></div>
+        <div className="w-16"></div> {/* Spacer for balance */}
       </nav>
 
+      {/* MESSAGES AREA */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
           <div className="text-center text-gray-500 mt-10">
@@ -208,6 +184,7 @@ export default function ChatRoomPage() {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* INPUT AREA */}
       <form onSubmit={sendMessage} className="border-t border-gray-800 p-3 flex gap-2 bg-gray-950 pb-6">
         <input
           value={newMessage}
