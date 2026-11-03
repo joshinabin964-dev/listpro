@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import toast from "react-hot-toast";
 import { requestNotificationPermission, onMessageListener } from "@/lib/firebase";
+import toast from "react-hot-toast";
 
 export default function InboxPage() {
   const [conversations, setConversations] = useState<any[]>([]);
@@ -19,10 +19,10 @@ export default function InboxPage() {
       
       setCurrentUser(session.user);
       
-      // 🔥 1. Request Notification Permission & Get Token
+      // 🔥 Request notification permission
       const token = await requestNotificationPermission();
-      if (token && session.user.id) {
-        // 🔥 2. Save the token to the user's profile in Supabase
+      if (token) {
+        // Save token to database so we can send push notifications
         await supabase
           .from("profiles")
           .upsert({ 
@@ -30,16 +30,13 @@ export default function InboxPage() {
             fcm_token: token,
             updated_at: new Date().toISOString()
           });
-        console.log("FCM Token saved to database!");
       }
       
-      // 🔥 3. Listen for messages while the app is OPEN
+      // Listen for messages when app is open
       onMessageListener((payload: any) => {
         toast.success(`📩 ${payload.notification?.title || 'New message!'}`, {
-          duration: 4000,
-          position: 'top-center'
+          duration: 4000
         });
-        // Refresh the inbox when a new message arrives
         fetchConversations(session.user.id);
       });
       
