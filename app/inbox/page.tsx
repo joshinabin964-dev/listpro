@@ -23,7 +23,6 @@ export default function InboxPage() {
   }, [router]);
 
   const fetchConversations = async (userId: string) => {
-    // Fetch all messages for this user
     const { data: messages, error } = await supabase
       .from("messages")
       .select("*")
@@ -35,7 +34,6 @@ export default function InboxPage() {
       return;
     }
 
-    // Group messages by conversation (other user + listing)
     const convos: any = {};
     
     for (const msg of messages) {
@@ -43,14 +41,12 @@ export default function InboxPage() {
       const convoKey = `${otherUserId}-${msg.listing_id}`;
       
       if (!convos[convoKey]) {
-        // Fetch other user's profile
         const { data: otherUser } = await supabase
           .from("profiles")
           .select("full_name, avatar_url, phone_number")
           .eq("id", otherUserId)
           .single();
         
-        // Fetch listing details
         const { data: listing } = await supabase
           .from("listings")
           .select("product_name, image_url, price")
@@ -59,6 +55,10 @@ export default function InboxPage() {
         
         convos[convoKey] = {
           id: convoKey,
+          // 🔥 FIX 1: Always save the raw IDs from the message, so the link never breaks
+          other_user_id: otherUserId, 
+          listing_id: msg.listing_id,
+          
           other_user: otherUser,
           listing: listing,
           last_message: msg.content,
@@ -68,13 +68,11 @@ export default function InboxPage() {
         };
       }
       
-      // Count unread messages (messages from other user that you haven't read)
       if (msg.sender_id !== userId && !msg.is_read) {
         convos[convoKey].unread_count++;
       }
     }
     
-    // Convert to array and sort by latest message
     const sortedConvos = Object.values(convos).sort((a: any, b: any) => 
       new Date(b.last_message_time).getTime() - new Date(a.last_message_time).getTime()
     );
@@ -97,7 +95,6 @@ export default function InboxPage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white pb-20">
-      {/* Header */}
       <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-4">
@@ -108,7 +105,6 @@ export default function InboxPage() {
             <div className="w-20"></div>
           </div>
           
-          {/* Search Bar */}
           <div className="relative">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.604 10.604z" />
@@ -145,14 +141,14 @@ export default function InboxPage() {
             {filteredConvos.map((convo: any) => (
               <Link 
                 key={convo.id} 
-                href={`/chat/${convo.listing?.id}?user=${convo.other_user?.id}`}
+                // 🔥 FIX 2: Fallback to the raw IDs if the profile/listing object is missing
+                href={`/chat/${convo.listing_id || convo.listing?.id}?user=${convo.other_user_id || convo.other_user?.id}`}
                 className="block"
               >
                 <div className={`bg-gray-900 rounded-2xl p-4 border transition hover:border-blue-500/50 ${
                   convo.unread_count > 0 ? 'border-blue-500 bg-blue-900/10' : 'border-gray-800'
                 }`}>
                   <div className="flex items-start gap-4">
-                    {/* Avatar */}
                     <div className="relative flex-shrink-0">
                       <div className="w-14 h-14 rounded-full bg-gray-800 flex items-center justify-center overflow-hidden">
                         {convo.other_user?.avatar_url ? (
@@ -174,7 +170,6 @@ export default function InboxPage() {
                       )}
                     </div>
 
-                    {/* Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
                         <h3 className="font-bold text-white text-lg truncate">

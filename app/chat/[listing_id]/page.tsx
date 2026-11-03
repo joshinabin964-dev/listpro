@@ -26,6 +26,13 @@ export default function ChatRoomPage() {
       if (!session) { router.push("/login"); return; }
       setCurrentUser(session.user);
       
+      // 🔥 FIX: Check if otherUserId exists
+      if (!otherUserId) {
+        toast.error("No user selected. Please go back to inbox.");
+        setLoading(false);
+        return;
+      }
+      
       if (otherUserId) {
         const { data: profileData } = await supabase
           .from("profiles")
@@ -87,15 +94,19 @@ export default function ChatRoomPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); 
   }, [messages]);
 
-  // 🔥 FIXED: Safer sendMessage function
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !currentUser || !otherUserId || sending) return;
+    
+    // 🔥 FIX: Check if otherUserId exists
+    if (!otherUserId) {
+      toast.error("Cannot send message: User not found");
+      return;
+    }
+    
+    if (!newMessage.trim() || !currentUser || sending) return;
     
     setSending(true);
     const tempId = Date.now(); 
-    
-    // 🔥 FIX 1: Force listing_id to be a string to prevent Next.js param bugs
     const safeListingId = String(listing_id); 
     
     const tempMsg = {
@@ -108,7 +119,6 @@ export default function ChatRoomPage() {
       created_at: new Date().toISOString()
     };
     
-    // Optimistic UI: Show it immediately
     setMessages((prev) => [...prev, tempMsg]);
     setNewMessage("");
     
@@ -123,10 +133,7 @@ export default function ChatRoomPage() {
       if (error) throw error;
     } catch (error: any) { 
       console.error("Chat send error:", error);
-      // 🔥 FIX 2: Show the EXACT error message so we know what's wrong
-      toast.error("Failed to send: " + (error.message || "Unknown error"));
-      
-      // Remove optimistic message on error
+      toast.error("Failed to send: " + error.message);
       setMessages((prev) => prev.filter(m => m.id !== tempId));
     } finally { 
       setSending(false); 
@@ -134,6 +141,18 @@ export default function ChatRoomPage() {
   };
 
   if (loading) return <div className="flex items-center justify-center h-screen bg-gray-950 text-white">Loading...</div>;
+  
+  // 🔥 FIX: Show error if no user
+  if (!otherUserId) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-950 text-white">
+        <div className="text-center">
+          <p className="text-xl font-bold mb-4">No conversation selected</p>
+          <Link href="/inbox" className="text-blue-400">Go to Inbox →</Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <main className="flex flex-col h-screen bg-gray-950 text-white">
