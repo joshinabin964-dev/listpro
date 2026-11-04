@@ -18,12 +18,18 @@ export default function ChatRoomPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   
-  // 🔥 NEW: States for the 4 new features
   const [listingDetails, setListingDetails] = useState<any>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   
+  // 🔥 NEW: Voice Message States
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 1. INITIAL LOAD
   useEffect(() => {
@@ -43,7 +49,6 @@ export default function ChatRoomPage() {
         if (profileData) setOtherUser(profileData);
       }
 
-      // 🔥 FIX: Fetch listing with ALL possible column names to guarantee it works
       const { data: listing } = await supabase
         .from("listings")
         .select("product_name, title, name, price, image_url, image")
@@ -70,7 +75,6 @@ export default function ChatRoomPage() {
           (m.sender_id === otherUserId && m.receiver_id === session.user.id)
         );
         
-        // Map to ensure tempId exists for retry logic
         const mappedMessages = filtered.map(m => ({ ...m, tempId: m.id }));
         setMessages(mappedMessages);
 
@@ -113,7 +117,6 @@ export default function ChatRoomPage() {
     return () => { supabase.removeChannel(channel); };
   }, [currentUser, listing_id, otherUserId]);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
@@ -128,7 +131,108 @@ export default function ChatRoomPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); 
   }, [messages]);
 
-  // 🔥 UPDATED: Simple, bulletproof send and retry
+  // 🔥 NEW: Toggle Voice Recording
+  const toggleRecording = async () => {
+    if (isRecording) {
+      // Stop recording
+      mediaRecorderRef.current?.stop();
+      setIsRecording(false);
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      setRecordingTime(0);
+    } else {
+      // Start recording
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+          await sendAudioMessage(audioBlob);
+          // Stop all tracks to release microphone
+          stream.getTracks().forEach(track => track.stop());
+        };
+
+        mediaRecorder.start();
+        setIsRecording(true);
+        
+        // Start timer
+        let seconds = 0;
+        recordingTimerRef.current = setInterval(() => {
+          seconds += 1;
+          setRecordingTime(seconds);
+        }, 1000);
+
+      } catch (error) {
+        console.error("Mic permission denied or error:", error);
+        toast.error("Microphone access is required to record voice messages.");
+      }
+    }
+  };
+
+  // 🔥 NEW: Send Audio Message
+  const sendAudioMessage = async (audioBlob: Blob) => {
+    if (!currentUser || !otherUserId) return;
+    setSending(true);
+    const tempId = `temp-audio-${Date.now()}`;
+    const tempMsg = {
+      tempId,
+      listing_id,
+      sender_id: currentUser.id,
+      receiver_id: otherUserId,
+      content: "🎤 Voice Message",
+      audio_url: "loading", // Placeholder
+      is_read: false,
+      created_at: new Date().toISOString(),
+      isFailed: false
+    };
+    setMessages((prev) => [...prev, tempMsg]);
+
+    try {
+      // 1. Upload to Supabase Storage
+      const fileName = `${currentUser.id}-${Date.now()}.webm`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("chat-audios")
+        .upload(fileName, audioBlob, { contentType: "audio/webm" });
+
+      if (uploadError) throw uploadError;
+
+      // 2. Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from("chat-audios")
+        .getPublicUrl(fileName);
+
+      // 3. Insert into database
+      const { error: dbError } = await supabase.from("messages").insert({
+        listing_id,
+        sender_id: currentUser.id,
+        receiver_id: otherUserId,
+        content: "🎤 Voice Message",
+        audio_url: publicUrl,
+        is_read: false
+      });
+
+      if (dbError) throw dbError;
+
+      // Remove temp message
+      setMessages((prev) => prev.filter(m => m.tempId !== tempId));
+    } catch (error: any) {
+      console.error("Audio send error:", error);
+      toast.error("Failed to send voice message.");
+      setMessages((prev) => prev.map(m => m.tempId === tempId ? { ...m, isFailed: true } : m));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Text message send
   const handleSendMessage = async (retryMsg?: any) => {
     const contentToSend = retryMsg ? retryMsg.content : newMessage.trim();
     if (!contentToSend || !currentUser || !otherUserId || sending) return;
@@ -136,7 +240,6 @@ export default function ChatRoomPage() {
     setSending(true);
     const tempId = retryMsg ? retryMsg.tempId : `temp-${Date.now()}`; 
     
-    // Optimistic update
     if (!retryMsg) {
       const tempMsg = {
         tempId,
@@ -151,7 +254,6 @@ export default function ChatRoomPage() {
       setMessages((prev) => [...prev, tempMsg]);
       setNewMessage("");
     } else {
-      // Remove failed state while retrying
       setMessages((prev) => prev.map(m => m.tempId === tempId ? {...m, isFailed: false} : m));
     }
     
@@ -163,15 +265,11 @@ export default function ChatRoomPage() {
         content: contentToSend, 
         is_read: false
       });
-      
       if (error) throw error;
-      
-      // Success: remove temp message
       setMessages((prev) => prev.filter(m => m.tempId !== tempId));
     } catch (error: any) { 
       console.error("Send error:", error);
       toast.error("Failed to send. Tap message to retry.");
-      // Mark as failed so UI shows retry button
       setMessages((prev) => prev.map(m => m.tempId === tempId ? {...m, isFailed: true} : m));
     } finally { 
       setSending(false); 
@@ -206,7 +304,6 @@ export default function ChatRoomPage() {
 
   return (
     <main className="flex flex-col h-screen bg-gray-950 text-white">
-      {/* HEADER */}
       <nav className="border-b border-gray-800 bg-gray-950 p-3 flex justify-between items-center sticky top-0 z-50 shadow-lg">
         <Link href="/inbox" className="text-blue-400 hover:text-blue-300 flex items-center gap-2">
           ← Back
@@ -244,7 +341,6 @@ export default function ChatRoomPage() {
         </div>
       </nav>
 
-      {/* 🔥 ITEM CONTEXT BANNER (Fail-safe rendering) */}
       {listingDetails && (
         <div className="bg-gray-900 border-b border-gray-800 p-3 flex items-center gap-3">
           <div className="w-12 h-12 rounded-lg bg-gray-800 overflow-hidden flex-shrink-0 border border-gray-700">
@@ -261,10 +357,7 @@ export default function ChatRoomPage() {
         </div>
       )}
 
-      {/* MESSAGES AREA */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        
-        {/* 🔥 SAFETY REMINDER (Shows if chat is empty) */}
         {messages.length === 0 && (
           <div className="mx-4 mt-2 bg-yellow-900/20 border border-yellow-700/50 rounded-xl p-3 flex items-start gap-3">
             <span className="text-xl mt-0.5">⚠️</span>
@@ -292,7 +385,17 @@ export default function ChatRoomPage() {
                     isMine ? "bg-blue-600 rounded-br-none" : "bg-gray-800 rounded-bl-none"
                   } ${msg.isFailed ? 'opacity-80 border border-red-500/50 cursor-pointer hover:opacity-100' : ''}`}
                 >
-                  <p className="text-sm break-words">{msg.content}</p>
+                  {/* 🔥 NEW: Render Audio Player if audio_url exists */}
+                  {msg.audio_url && msg.audio_url !== "loading" ? (
+                    <audio controls src={msg.audio_url} className="max-w-[200px] h-8" />
+                  ) : msg.audio_url === "loading" ? (
+                    <div className="flex items-center gap-2 text-sm">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Sending voice message...
+                    </div>
+                  ) : (
+                    <p className="text-sm break-words">{msg.content}</p>
+                  )}
                 </div>
                 
                 <div className="flex items-center gap-1 mt-1 px-1">
@@ -322,28 +425,57 @@ export default function ChatRoomPage() {
       </div>
 
       {/* INPUT AREA */}
-      <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="border-t border-gray-800 p-3 flex gap-2 bg-gray-950 pb-6">
-        <input
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Type a message..."
-          className="flex-1 bg-gray-900 border border-gray-700 rounded-full px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
-          disabled={sending}
-        />
+      <div className="border-t border-gray-800 p-3 flex gap-2 bg-gray-950 pb-6 items-center">
+        {isRecording ? (
+          <div className="flex-1 flex items-center gap-3 bg-red-900/20 border border-red-500/30 rounded-full px-4 py-3">
+            <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
+            <span className="text-red-400 font-mono text-sm">
+              {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+            </span>
+            <span className="text-xs text-gray-400 flex-1 text-right">Tap mic to stop & send</span>
+          </div>
+        ) : (
+          <input
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Type a message..."
+            className="flex-1 bg-gray-900 border border-gray-700 rounded-full px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
+            disabled={sending}
+          />
+        )}
+        
+        {/* 🔥 NEW: Microphone Button */}
         <button 
-          type="submit" 
-          disabled={sending || !newMessage.trim()} 
-          className="bg-blue-600 hover:bg-blue-500 w-12 h-12 rounded-full flex items-center justify-center disabled:opacity-50 transition"
+          type="button"
+          onClick={toggleRecording}
+          disabled={sending}
+          className={`w-12 h-12 rounded-full flex items-center justify-center transition disabled:opacity-50 ${
+            isRecording ? "bg-red-600 hover:bg-red-500 animate-pulse" : "bg-gray-800 hover:bg-gray-700"
+          }`}
         >
-          {sending ? (
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-          ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-white">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-            </svg>
-          )}
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-white">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+          </svg>
         </button>
-      </form>
+
+        {/* Send Button (Only show when not recording and has text) */}
+        {!isRecording && (
+          <button 
+            type="button"
+            onClick={(e) => { e.preventDefault(); handleSendMessage(); }}
+            disabled={sending || !newMessage.trim()} 
+            className="bg-blue-600 hover:bg-blue-500 w-12 h-12 rounded-full flex items-center justify-center disabled:opacity-50 disabled:bg-gray-800 transition"
+          >
+            {sending ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-white">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+              </svg>
+            )}
+          </button>
+        )}
+      </div>
     </main>
   );
 }
