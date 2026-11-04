@@ -8,6 +8,10 @@ export default function InboxPage() {
   const [messages, setMessages] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  
+  // 🔥 NEW: State to hold user profiles (Name & Picture)
+  const [userProfiles, setUserProfiles] = useState<any>({}); 
+  
   const router = useRouter();
 
   useEffect(() => {
@@ -16,6 +20,7 @@ export default function InboxPage() {
       if (!session) { router.push("/login"); return; }
       setCurrentUser(session.user);
       
+      // 🔥 YOUR EXACT MESSAGE FETCH (Untouched)
       const { data, error } = await supabase
         .from("messages")
         .select("*") 
@@ -24,6 +29,25 @@ export default function InboxPage() {
 
       if (error) console.error("Inbox Error:", error);
       setMessages(data || []);
+
+      // 🔥 NEW: Fetch Names and Pictures for the people in these messages
+      if (data && data.length > 0) {
+        // Find all unique user IDs from the messages
+        const uniqueIds = [...new Set(data.map(m => m.sender_id === session.user.id ? m.receiver_id : m.sender_id))];
+        
+        // Fetch their profiles
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name, avatar_url")
+          .in("id", uniqueIds);
+          
+        if (profiles) {
+          // Create a quick lookup dictionary: { userId: { name, avatar } }
+          const profileMap = profiles.reduce((acc: any, p: any) => { acc[p.id] = p; return acc; }, {});
+          setUserProfiles(profileMap);
+        }
+      }
+
       setLoading(false);
     };
     init();
@@ -37,7 +61,7 @@ export default function InboxPage() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white p-4">
-      {/* 🔥 NAVIGATION BAR */}
+      {/* 🔥 NAVIGATION BAR (Untouched) */}
       <nav className="mb-6 flex justify-between items-center">
         <Link href="/dashboard" className="text-blue-400 hover:text-blue-300 flex items-center gap-2">
           ← Back to Dashboard
@@ -61,23 +85,39 @@ export default function InboxPage() {
             const otherUserId = msg.sender_id === currentUser.id ? msg.receiver_id : msg.sender_id;
             const isMe = msg.sender_id === currentUser.id;
             
+            // 🔥 NEW: Get the user's name and picture from our new state
+            const otherUser = userProfiles[otherUserId] || {};
+            const otherName = otherUser.full_name || "User";
+            const otherAvatar = otherUser.avatar_url;
+
             return (
               <Link 
                 key={msg.id} 
                 href={`/chat/${msg.listing_id}?user=${otherUserId}`}
                 className="block"
               >
-                <div className={`p-4 rounded-xl border ${isMe ? 'bg-blue-900/20 border-blue-800' : 'bg-gray-900 border-gray-800'}`}>
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-xs font-bold text-gray-400">
-                      {isMe ? "You sent:" : "Received:"}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {new Date(msg.created_at).toLocaleTimeString()}
-                    </span>
+                <div className={`p-4 rounded-xl border flex items-center gap-4 ${isMe ? 'bg-blue-900/20 border-blue-800' : 'bg-gray-900 border-gray-800'}`}>
+                  
+                  {/* 🔥 NEW: Profile Picture */}
+                  <div className="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {otherAvatar ? (
+                      <img src={otherAvatar} alt={otherName} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-lg font-bold text-gray-400">{otherName.charAt(0).toUpperCase()}</span>
+                    )}
                   </div>
-                  <p className="text-white font-medium mb-2">{msg.content}</p>
-                  <p className="text-xs text-blue-400">Listing ID: {msg.listing_id.slice(0, 8)}...</p>
+
+                  {/* Message Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-bold text-white truncate">{otherName}</span>
+                      <span className="text-xs text-gray-500 flex-shrink-0 ml-2">
+                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className="text-gray-400 text-sm truncate mb-1">{msg.content}</p>
+                    <p className="text-[10px] text-blue-400">Listing: {msg.listing_id.slice(0, 8)}...</p>
+                  </div>
                 </div>
               </Link>
             );
