@@ -21,11 +21,9 @@ export default function ChatRoomPage() {
   const [listingDetails, setListingDetails] = useState<any>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   
-  // Voice Message States
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   
-  // 🔥 NEW: Media Upload States
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -95,7 +93,7 @@ export default function ChatRoomPage() {
     initChat();
   }, [listing_id, otherUserId, router]);
 
-  // 2. LIVE REALTIME LISTENER
+  // 2. LIVE REALTIME LISTENER (🔥 FIXED TYPO HERE)
   useEffect(() => {
     if (!currentUser || !listing_id || !otherUserId) return;
     
@@ -108,10 +106,11 @@ export default function ChatRoomPage() {
         filter: `listing_id=eq.${listing_id}` 
       }, (payload) => {
         const newMsg = payload.new;
+        // Fixed: changed 'm.receiver_id' to 'newMsg.receiver_id'
         if ((newMsg.sender_id === currentUser.id && newMsg.receiver_id === otherUserId) ||
-            (newMsg.sender_id === otherUserId && m.receiver_id === currentUser.id)) {
+            (newMsg.sender_id === otherUserId && newMsg.receiver_id === currentUser.id)) {
           setMessages((prev) => {
-            if (prev.find(m => m.id === newMsg.id || m.tempId === newMsg.id)) return prev;
+            if (prev.find(msg => msg.id === newMsg.id || msg.tempId === newMsg.id)) return prev;
             return [...prev, { ...newMsg, tempId: newMsg.id }];
           });
         }
@@ -135,32 +134,27 @@ export default function ChatRoomPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); 
   }, [messages]);
 
-  // 🔥 NEW: Handle Media File Selection
   const handleMediaSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm'];
     if (!validTypes.includes(file.type)) {
       toast.error("Please select a valid image (JPG, PNG, WEBP) or video (MP4, WEBM)");
       return;
     }
 
-    // Validate file size (max 50MB)
     if (file.size > 50 * 1024 * 1024) {
       toast.error("File size must be less than 50MB");
       return;
     }
 
     await sendMediaMessage(file);
-    // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
-  //  NEW: Send Media Message (Image/Video)
   const sendMediaMessage = async (file: File) => {
     if (!currentUser || !otherUserId) return;
     setIsUploadingMedia(true);
@@ -181,21 +175,18 @@ export default function ChatRoomPage() {
     setMessages((prev) => [...prev, tempMsg]);
 
     try {
-      // 1. Upload to Supabase Storage
       const fileExt = file.name.split('.').pop();
       const fileName = `${currentUser.id}-${Date.now()}.${fileExt}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from("chat-media")
         .upload(fileName, file, { contentType: file.type });
 
       if (uploadError) throw uploadError;
 
-      // 2. Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from("chat-media")
         .getPublicUrl(fileName);
 
-      // 3. Insert into database
       const { error: dbError } = await supabase.from("messages").insert({
         listing_id,
         sender_id: currentUser.id,
@@ -207,8 +198,6 @@ export default function ChatRoomPage() {
       });
 
       if (dbError) throw dbError;
-
-      // Remove temp message
       setMessages((prev) => prev.filter(m => m.tempId !== tempId));
       toast.success(isVideo ? "Video sent!" : "Photo sent!");
     } catch (error: any) {
@@ -220,7 +209,6 @@ export default function ChatRoomPage() {
     }
   };
 
-  // Voice Recording Toggle
   const toggleRecording = async () => {
     if (isRecording) {
       mediaRecorderRef.current?.stop();
@@ -262,7 +250,6 @@ export default function ChatRoomPage() {
     }
   };
 
-  // Send Audio Message
   const sendAudioMessage = async (audioBlob: Blob) => {
     if (!currentUser || !otherUserId) return;
     setSending(true);
@@ -312,7 +299,6 @@ export default function ChatRoomPage() {
     }
   };
 
-  // Text message send
   const handleSendMessage = async (retryMsg?: any) => {
     const contentToSend = retryMsg ? retryMsg.content : newMessage.trim();
     if (!contentToSend || !currentUser || !otherUserId || sending) return;
@@ -384,7 +370,6 @@ export default function ChatRoomPage() {
 
   return (
     <main className="flex flex-col h-screen bg-gray-950 text-white">
-      {/* Hidden File Input */}
       <input
         type="file"
         ref={fileInputRef}
@@ -474,7 +459,6 @@ export default function ChatRoomPage() {
                     isMine ? "bg-blue-600 rounded-br-none" : "bg-gray-800 rounded-bl-none"
                   } ${msg.isFailed ? 'opacity-80 border border-red-500/50 cursor-pointer hover:opacity-100' : ''}`}
                 >
-                  {/* Render Media (Image/Video) */}
                   {msg.media_url && msg.media_url !== "loading" ? (
                     msg.media_type === 'image' ? (
                       <img src={msg.media_url} alt="Shared" className="max-w-full rounded-lg cursor-pointer hover:opacity-90" onClick={() => window.open(msg.media_url, '_blank')} />
@@ -524,7 +508,6 @@ export default function ChatRoomPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* INPUT AREA */}
       <div className="border-t border-gray-800 p-3 flex gap-2 bg-gray-950 pb-6 items-center">
         {isRecording ? (
           <div className="flex-1 flex items-center gap-3 bg-red-900/20 border border-red-500/30 rounded-full px-4 py-3">
@@ -544,7 +527,6 @@ export default function ChatRoomPage() {
           />
         )}
         
-        {/* 🔥 NEW: Attachment Button */}
         <button 
           type="button"
           onClick={() => fileInputRef.current?.click()}
@@ -557,7 +539,6 @@ export default function ChatRoomPage() {
           </svg>
         </button>
 
-        {/* Microphone Button */}
         <button 
           type="button"
           onClick={toggleRecording}
@@ -571,7 +552,6 @@ export default function ChatRoomPage() {
           </svg>
         </button>
 
-        {/* Send Button */}
         {!isRecording && (
           <button 
             type="button"
