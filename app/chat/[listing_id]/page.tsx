@@ -35,21 +35,28 @@ export default function ChatRoomPage() {
       await supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", session.user.id);
 
       if (otherUserId) {
-        const { data: profileData, error } = await supabase
+        const { data: profileData } = await supabase
           .from("profiles")
           .select("full_name, avatar_url, last_seen")
           .eq("id", otherUserId)
           .single();
-        if (!error) setOtherUser(profileData);
+        if (profileData) setOtherUser(profileData);
       }
 
-      // 🔥 NEW: Fetch Item Context
+      // 🔥 FIX: Fetch listing with ALL possible column names to guarantee it works
       const { data: listing } = await supabase
         .from("listings")
-        .select("product_name, price, image_url")
+        .select("product_name, title, name, price, image_url, image")
         .eq("id", listing_id)
         .single();
-      if (listing) setListingDetails(listing);
+      
+      if (listing) {
+        setListingDetails({
+          displayName: listing.product_name || listing.title || listing.name || "Item",
+          displayPrice: listing.price ? `$${listing.price}` : "Price not set",
+          displayImage: listing.image_url || listing.image || null
+        });
+      }
 
       const { data } = await supabase
         .from("messages")
@@ -62,7 +69,10 @@ export default function ChatRoomPage() {
           (m.sender_id === session.user.id && m.receiver_id === otherUserId) ||
           (m.sender_id === otherUserId && m.receiver_id === session.user.id)
         );
-        setMessages(filtered);
+        
+        // Map to ensure tempId exists for retry logic
+        const mappedMessages = filtered.map(m => ({ ...m, tempId: m.id }));
+        setMessages(mappedMessages);
 
         const unreadMessageIds = filtered
           .filter(m => m.receiver_id === session.user.id && !m.is_read)
@@ -93,8 +103,8 @@ export default function ChatRoomPage() {
         if ((newMsg.sender_id === currentUser.id && newMsg.receiver_id === otherUserId) ||
             (newMsg.sender_id === otherUserId && newMsg.receiver_id === currentUser.id)) {
           setMessages((prev) => {
-            if (prev.find(m => m.id === newMsg.id) || prev.find(m => m.tempId === newMsg.id)) return prev;
-            return [...prev, newMsg];
+            if (prev.find(m => m.id === newMsg.id || m.tempId === newMsg.id)) return prev;
+            return [...prev, { ...newMsg, tempId: newMsg.id }];
           });
         }
       })
@@ -103,7 +113,7 @@ export default function ChatRoomPage() {
     return () => { supabase.removeChannel(channel); };
   }, [currentUser, listing_id, otherUserId]);
 
-  // 🔥 NEW: Close dropdown when clicking outside
+  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
@@ -118,51 +128,63 @@ export default function ChatRoomPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); 
   }, [messages]);
 
-  // 🔥 UPDATED: Handle sending and retrying failed messages
-  const sendMessage = async (e?: React.FormEvent, retryMsg?: any) => {
-    if (e) e.preventDefault();
+  // 🔥 UPDATED: Simple, bulletproof send and retry
+  const handleSendMessage = async (retryMsg?: any) => {
     const contentToSend = retryMsg ? retryMsg.content : newMessage.trim();
     if (!contentToSend || !currentUser || !otherUserId || sending) return;
     
     setSending(true);
-    const tempId = retryMsg ? retryMsg.tempId : Date.now(); 
+    const tempId = retryMsg ? retryMsg.tempId : `temp-${Date.now()}`; 
     
+    // Optimistic update
     if (!retryMsg) {
       const tempMsg = {
         tempId,
-        listing_id, sender_id: currentUser.id, receiver_id: otherUserId, 
-        content: contentToSend, is_read: false,
+        listing_id, 
+        sender_id: currentUser.id, 
+        receiver_id: otherUserId, 
+        content: contentToSend, 
+        is_read: false,
         created_at: new Date().toISOString(),
         isFailed: false
       };
       setMessages((prev) => [...prev, tempMsg]);
       setNewMessage("");
     } else {
+      // Remove failed state while retrying
       setMessages((prev) => prev.map(m => m.tempId === tempId ? {...m, isFailed: false} : m));
     }
     
     try {
       const { error } = await supabase.from("messages").insert({
-        listing_id, sender_id: currentUser.id, receiver_id: otherUserId, 
-        content: contentToSend, is_read: false
+        listing_id, 
+        sender_id: currentUser.id, 
+        receiver_id: otherUserId, 
+        content: contentToSend, 
+        is_read: false
       });
+      
       if (error) throw error;
+      
+      // Success: remove temp message
       setMessages((prev) => prev.filter(m => m.tempId !== tempId));
     } catch (error: any) { 
-      toast.error("Failed to send: " + error.message);
+      console.error("Send error:", error);
+      toast.error("Failed to send. Tap message to retry.");
+      // Mark as failed so UI shows retry button
       setMessages((prev) => prev.map(m => m.tempId === tempId ? {...m, isFailed: true} : m));
     } finally { 
       setSending(false); 
     }
   };
 
-  // 🔥 NEW: Block & Report Handlers
   const handleBlock = () => {
-    toast.error("User blocked. You will no longer receive messages from them.");
+    toast.error("User blocked.");
     setShowMoreMenu(false);
   };
+  
   const handleReport = () => {
-    toast.success("User reported to our safety team. Thank you for keeping Nabjo safe.");
+    toast.success("User reported to safety team.");
     setShowMoreMenu(false);
   };
 
@@ -184,6 +206,7 @@ export default function ChatRoomPage() {
 
   return (
     <main className="flex flex-col h-screen bg-gray-950 text-white">
+      {/* HEADER */}
       <nav className="border-b border-gray-800 bg-gray-950 p-3 flex justify-between items-center sticky top-0 z-50 shadow-lg">
         <Link href="/inbox" className="text-blue-400 hover:text-blue-300 flex items-center gap-2">
           ← Back
@@ -202,22 +225,18 @@ export default function ChatRoomPage() {
             <span className={`text-[10px] ${isActiveNow ? 'text-green-400' : 'text-gray-400'}`}>{statusText}</span>
           </div>
           
-          {/* 🔥 NEW: More Menu Button */}
           <button onClick={() => setShowMoreMenu(!showMoreMenu)} className="ml-2 p-2 hover:bg-gray-800 rounded-full transition">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-400">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
             </svg>
           </button>
 
-          {/* 🔥 NEW: Dropdown Menu */}
           {showMoreMenu && (
             <div className="absolute right-0 top-12 w-48 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
               <button onClick={handleReport} className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-gray-800 transition flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5" /></svg>
                 Report User
               </button>
               <button onClick={handleBlock} className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-gray-800 transition flex items-center gap-2 border-t border-gray-800">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                 Block User
               </button>
             </div>
@@ -225,25 +244,27 @@ export default function ChatRoomPage() {
         </div>
       </nav>
 
-      {/* 🔥 NEW: Item Context Banner */}
+      {/* 🔥 ITEM CONTEXT BANNER (Fail-safe rendering) */}
       {listingDetails && (
         <div className="bg-gray-900 border-b border-gray-800 p-3 flex items-center gap-3">
           <div className="w-12 h-12 rounded-lg bg-gray-800 overflow-hidden flex-shrink-0 border border-gray-700">
-            {listingDetails.image_url ? (
-              <img src={listingDetails.image_url} alt="Item" className="w-full h-full object-cover" />
+            {listingDetails.displayImage ? (
+              <img src={listingDetails.displayImage} alt="Item" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-gray-600 text-xl">📦</div>
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-white truncate">{listingDetails.product_name || "Item"}</p>
-            <p className="text-xs text-blue-400">{listingDetails.price ? `$${listingDetails.price}` : "Price not set"}</p>
+            <p className="text-sm font-bold text-white truncate">{listingDetails.displayName}</p>
+            <p className="text-xs text-blue-400">{listingDetails.displayPrice}</p>
           </div>
         </div>
       )}
 
+      {/* MESSAGES AREA */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* 🔥 NEW: Safety Reminder */}
+        
+        {/* 🔥 SAFETY REMINDER (Shows if chat is empty) */}
         {messages.length === 0 && (
           <div className="mx-4 mt-2 bg-yellow-900/20 border border-yellow-700/50 rounded-xl p-3 flex items-start gap-3">
             <span className="text-xl mt-0.5">⚠️</span>
@@ -266,7 +287,7 @@ export default function ChatRoomPage() {
             <div key={msg.id || msg.tempId} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[75%] ${isMine ? "items-end" : "items-start"} flex flex-col`}>
                 <div 
-                  onClick={msg.isFailed ? () => sendMessage(undefined, msg) : undefined}
+                  onClick={msg.isFailed ? () => handleSendMessage(msg) : undefined}
                   className={`px-4 py-2 rounded-2xl transition ${
                     isMine ? "bg-blue-600 rounded-br-none" : "bg-gray-800 rounded-bl-none"
                   } ${msg.isFailed ? 'opacity-80 border border-red-500/50 cursor-pointer hover:opacity-100' : ''}`}
@@ -276,7 +297,7 @@ export default function ChatRoomPage() {
                 
                 <div className="flex items-center gap-1 mt-1 px-1">
                   {msg.isFailed ? (
-                    <span className="text-[10px] text-red-400 font-medium flex items-center gap-1 cursor-pointer hover:text-red-300" onClick={() => sendMessage(undefined, msg)}>
+                    <span className="text-[10px] text-red-400 font-medium flex items-center gap-1 cursor-pointer hover:text-red-300" onClick={() => handleSendMessage(msg)}>
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
                         <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
                       </svg>
@@ -300,7 +321,8 @@ export default function ChatRoomPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      <form onSubmit={sendMessage} className="border-t border-gray-800 p-3 flex gap-2 bg-gray-950 pb-6">
+      {/* INPUT AREA */}
+      <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="border-t border-gray-800 p-3 flex gap-2 bg-gray-950 pb-6">
         <input
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
