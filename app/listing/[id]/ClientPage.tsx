@@ -35,7 +35,6 @@ export default function ClientPage() {
   const [holdRequest, setHoldRequest] = useState<any>(null);
   const [isRequestingHold, setIsRequestingHold] = useState(false);
 
-  // 🔥 NEW: Make Offer States
   const [showOfferModal, setShowOfferModal] = useState(false);
   const [offerAmount, setOfferAmount] = useState("");
   const [isSubmittingOffer, setIsSubmittingOffer] = useState(false);
@@ -228,7 +227,6 @@ export default function ClientPage() {
     setIsRequestingHold(false);
   };
 
-  // 🔥 NEW: Handle Make Offer
   const handleMakeOffer = async () => {
     if (!currentUser) { toast.error("Please log in to make an offer."); router.push("/login"); return; }
     const amount = parseFloat(offerAmount);
@@ -467,13 +465,11 @@ export default function ClientPage() {
                   ) : holdRequest?.status === "approved" ? (
                     <div className="flex-1 min-w-[200px] p-3 md:p-4 bg-green-900/20 text-green-400 font-bold rounded-xl text-base md:text-lg text-center border border-green-500/30 flex items-center justify-center gap-2">✅ Reserved for You!</div>
                   ) : currentUser && currentUser.id !== listing.user_id ? (
-                    {/* 🔥 FIXED: Stacked vertically on mobile, side-by-side on desktop so nothing gets hidden */}
                     <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full">
                       <Link href={`/chat/${listing.id}?user=${listing.user_id}`} className="flex-1 min-w-[200px] p-3 md:p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-base md:text-lg flex items-center justify-center gap-2 text-center">
                         💬 Message
                       </Link>
                       
-                      {/* 🔥 NEW: Make Offer Button */}
                       <button onClick={() => setShowOfferModal(true)} className="flex-1 min-w-[200px] p-3 md:p-4 bg-green-600 hover:bg-green-500 text-white font-bold rounded-xl transition text-base md:text-lg flex items-center justify-center gap-2">
                         💰 Make Offer
                       </button>
@@ -515,7 +511,6 @@ export default function ClientPage() {
         </div>
       </div>
 
-      {/* 🔥 NEW: MAKE OFFER MODAL */}
       {showOfferModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
@@ -547,7 +542,6 @@ export default function ClientPage() {
         </div>
       )}
 
-      {/* EXPORT MODAL */}
       {showExportModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
@@ -598,7 +592,6 @@ export default function ClientPage() {
         </div>
       )}
 
-      {/* Review Modal */}
       {showReviewModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -623,7 +616,6 @@ export default function ClientPage() {
         </div>
       )}
 
-      {/* Report Modal */}
       {showReportModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
