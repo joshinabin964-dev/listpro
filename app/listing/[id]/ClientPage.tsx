@@ -12,7 +12,7 @@ export default function ClientPage() {
   const [seller, setSeller] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userCountry, setUserCountry] = useState("Unknown");
-  const [userPlan, setUserPlan] = useState("free"); // 🆕 Added userPlan state
+  const [userPlan, setUserPlan] = useState("free");
   const [loading, setLoading] = useState(true);
   
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -35,6 +35,11 @@ export default function ClientPage() {
   const [holdRequest, setHoldRequest] = useState<any>(null);
   const [isRequestingHold, setIsRequestingHold] = useState(false);
 
+  // 🔥 NEW: Make Offer States
+  const [showOfferModal, setShowOfferModal] = useState(false);
+  const [offerAmount, setOfferAmount] = useState("");
+  const [isSubmittingOffer, setIsSubmittingOffer] = useState(false);
+
   const [timeLeft, setTimeLeft] = useState("");
   const [isBidding, setIsBidding] = useState(false);
   const [customBidAmount, setCustomBidAmount] = useState("");
@@ -47,7 +52,6 @@ export default function ClientPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setCurrentUser(session.user);
-        // 🆕 Fetch user plan and country
         const { data: profile } = await supabase.from("profiles").select("country, plan").eq("id", session.user.id).single();
         if (profile) {
           setUserCountry(profile.country || "Unknown");
@@ -224,6 +228,33 @@ export default function ClientPage() {
     setIsRequestingHold(false);
   };
 
+  // 🔥 NEW: Handle Make Offer
+  const handleMakeOffer = async () => {
+    if (!currentUser) { toast.error("Please log in to make an offer."); router.push("/login"); return; }
+    const amount = parseFloat(offerAmount);
+    if (!amount || amount <= 0) {
+      toast.error("Please enter a valid offer amount.");
+      return;
+    }
+    setIsSubmittingOffer(true);
+    try {
+      const { error } = await supabase.from("offers").insert({
+        listing_id: listing.id,
+        buyer_id: currentUser.id,
+        seller_id: listing.user_id,
+        offer_amount: amount,
+        status: "pending"
+      });
+      if (error) throw error;
+      toast.success("💰 Offer submitted successfully! The seller has been notified.");
+      setShowOfferModal(false);
+      setOfferAmount("");
+    } catch (error: any) {
+      toast.error("Failed to submit offer: " + error.message);
+    }
+    setIsSubmittingOffer(false);
+  };
+
   const copyToClipboard = (text: string, message: string) => {
     navigator.clipboard.writeText(text);
     toast.success(message);
@@ -253,7 +284,6 @@ export default function ClientPage() {
     setShowExportModal(false);
   };
 
-  // 🆕 PRO FEATURE CHECK
   const handleProFeatureClick = (featureName: string) => {
     if (userPlan !== 'pro') {
       toast.error(`🔒 ${featureName} is a Pro feature! Upgrade to unlock.`);
@@ -438,7 +468,13 @@ export default function ClientPage() {
                     <div className="flex-1 min-w-[200px] p-3 md:p-4 bg-green-900/20 text-green-400 font-bold rounded-xl text-base md:text-lg text-center border border-green-500/30 flex items-center justify-center gap-2">✅ Reserved for You!</div>
                   ) : currentUser && currentUser.id !== listing.user_id ? (
                     <div className="flex flex-col sm:flex-row gap-3 w-full">
-                      <Link href={`/chat/${listing.id}?user=${listing.user_id}`} className="flex-1 min-w-[200px] p-3 md:p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-base md:text-lg flex items-center justify-center gap-2 text-center">Message</Link>
+                      <Link href={`/chat/${listing.id}?user=${listing.user_id}`} className="flex-1 min-w-[200px] p-3 md:p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-base md:text-lg flex items-center justify-center gap-2 text-center">💬 Message</Link>
+                      
+                      {/* 🔥 NEW: Make Offer Button */}
+                      <button onClick={() => setShowOfferModal(true)} className="flex-1 min-w-[200px] p-3 md:p-4 bg-green-600 hover:bg-green-500 text-white font-bold rounded-xl transition text-base md:text-lg flex items-center justify-center gap-2">
+                        💰 Make Offer
+                      </button>
+                      
                       <button onClick={handleRequestHold} disabled={isRequestingHold} className="flex-1 min-w-[200px] p-3 md:p-4 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition text-base md:text-lg flex items-center justify-center gap-2">
                         {isRequestingHold ? "..." : "🔒 Hold"}
                       </button>
@@ -455,7 +491,6 @@ export default function ClientPage() {
                 </button>
               )}
 
-              {/* 📤 EXPORT BUTTON (ONLY FOR OWNER) */}
               {isOwner && (
                 <button 
                   onClick={() => setShowExportModal(true)}
@@ -477,7 +512,48 @@ export default function ClientPage() {
         </div>
       </div>
 
-      {/* 📤 EXPORT MODAL WITH PRO GATING */}
+      {/* 🔥 NEW: MAKE OFFER MODAL */}
+      {showOfferModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <h3 className="text-xl font-bold mb-2 text-white">Make an Offer</h3>
+            <p className="text-gray-400 text-sm mb-6">The seller will be notified and can accept, reject, or counter your offer.</p>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-400 mb-2">Your Offer Amount</label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">
+                  {listing.currency_code === 'NPR' ? 'Rs. ' : '$'}
+                </span>
+                <input 
+                  type="number" 
+                  value={offerAmount} 
+                  onChange={(e) => setOfferAmount(e.target.value)} 
+                  placeholder="0.00" 
+                  className="w-full p-4 pl-12 bg-gray-800 border border-gray-700 rounded-xl text-white text-lg font-bold focus:outline-none focus:border-green-500" 
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-2">Listed price: {listing.currency_code === 'NPR' ? 'Rs. ' : '$'}{listing.sale_price}</p>
+            </div>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowOfferModal(false)} 
+                className="flex-1 p-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleMakeOffer} 
+                disabled={isSubmittingOffer || !offerAmount} 
+                className="flex-1 p-3 bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition"
+              >
+                {isSubmittingOffer ? "Submitting..." : "Submit Offer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EXPORT MODAL */}
       {showExportModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
@@ -528,7 +604,7 @@ export default function ClientPage() {
         </div>
       )}
 
-      {/* Review & Report Modals remain unchanged... */}
+      {/* Review Modal */}
       {showReviewModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -553,6 +629,7 @@ export default function ClientPage() {
         </div>
       )}
 
+      {/* Report Modal */}
       {showReportModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
