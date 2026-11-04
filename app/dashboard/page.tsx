@@ -105,9 +105,10 @@ export default function DashboardPage() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
-  
-  // 🔥 NEW: State for the dashboard avatar
   const [avatarUrl, setAvatarUrl] = useState<string>("");
+  
+  // 🔥 NEW: State for unread messages count
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   
   const [processingNotif, setProcessingNotif] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -119,12 +120,11 @@ export default function DashboardPage() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { router.push("/login"); return; }
 
-    // 🔥 UPDATED: Added avatar_url to the select query
     const { data: profile } = await supabase.from("profiles").select("plan, country, latitude, longitude, full_name, avatar_url").eq("id", session.user.id).single();
     if (profile) {
       setPlan(profile.plan || "free");
       setUserName(profile.full_name);
-      setAvatarUrl(profile.avatar_url || ""); // 🔥 Save avatar to state
+      setAvatarUrl(profile.avatar_url || "");
       setCurrencySymbol(getSymbol(profile.country));
     }
 
@@ -145,6 +145,16 @@ export default function DashboardPage() {
       .limit(10);
     
     if (notifs) setNotifications(notifs);
+
+    // 🔥 NEW: Fetch unread messages count for the badge
+    const { count } = await supabase
+      .from("messages")
+      .select("*", { count: "exact", head: true })
+      .eq("receiver_id", session.user.id)
+      .eq("is_read", false);
+    
+    setUnreadMessagesCount(count || 0);
+
     setLoading(false);
   }, [router]);
 
@@ -205,6 +215,18 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex justify-between items-center">
           <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Nabjo</h1>
           <div className="flex items-center gap-2 md:gap-4">
+            
+            {/* 🔥 NEW: Inbox Icon with Unread Badge in Top Nav */}
+            <Link href="/inbox" className="relative px-3 py-2 md:px-4 md:py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition flex items-center gap-1 md:gap-2">
+              <span>💬</span>
+              <span className="hidden sm:inline">Inbox</span>
+              {unreadMessagesCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full animate-pulse">
+                  {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+                </span>
+              )}
+            </Link>
+
             <div className="relative" ref={notifRef}>
               <button onClick={() => setShowNotifications(!showNotifications)} className="px-3 py-2 md:px-4 md:py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs md:text-sm transition flex items-center gap-1 md:gap-2 relative">
                 <span>🔔</span>
@@ -247,13 +269,13 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+
             <Link href="/pricing">
               <button className={`px-3 py-2 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-bold transition ${plan === 'pro' ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-white'}`}>
                 {plan === 'pro' ? '⭐ Pro' : 'Upgrade'}
               </button>
             </Link>
 
-            {/* 🔥 NEW: Professional Profile Avatar Link */}
             <Link href="/profile" className="flex items-center gap-2 hover:bg-gray-800 rounded-full p-1 pr-3 transition border border-transparent hover:border-gray-700">
               <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden border border-gray-600">
                 {avatarUrl ? (
@@ -340,13 +362,23 @@ export default function DashboardPage() {
               <p className="text-sm md:text-base text-gray-400">Browse items listed by the community.</p>
             </div>
           </Link>
-          <Link href="/inbox" className="block">
-            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-yellow-500 transition cursor-pointer group">
+          
+          {/* 🔥 UPDATED: My Inbox Card with Unread Badge & Bold Style */}
+          <Link href="/inbox" className="block relative">
+            <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-yellow-500 transition cursor-pointer group relative overflow-hidden">
+              {unreadMessagesCount > 0 && (
+                <span className="absolute top-4 right-4 bg-red-500 text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full animate-pulse z-10">
+                  {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+                </span>
+              )}
               <span className="text-3xl md:text-4xl mb-3 md:mb-4 block">💬</span>
-              <h3 className="text-xl md:text-2xl font-bold mb-2 group-hover:text-yellow-400 transition">My Inbox</h3>
+              <h3 className={`text-xl md:text-2xl font-bold mb-2 transition ${unreadMessagesCount > 0 ? 'text-yellow-400' : 'group-hover:text-yellow-400'}`}>
+                My Inbox
+              </h3>
               <p className="text-sm md:text-base text-gray-400">Read messages from interested buyers.</p>
             </div>
           </Link>
+
           <Link href="/saved" className="block">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-red-500 transition cursor-pointer group">
               <span className="text-3xl md:text-4xl mb-3 md:mb-4 block">❤️</span>
@@ -369,7 +401,6 @@ export default function DashboardPage() {
             </div>
           </Link>
           
-          {/* ✨ AI Background Remover Card */}
           <Link href="/tools/background-remover" className="block sm:col-span-2 md:col-span-1">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-indigo-500 transition cursor-pointer group relative overflow-hidden">
               <div className="absolute top-4 right-4">
