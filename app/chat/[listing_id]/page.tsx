@@ -21,9 +21,13 @@ export default function ChatRoomPage() {
   const [listingDetails, setListingDetails] = useState<any>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   
-  // 🔥 NEW: Voice Message States
+  // Voice Message States
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  
+  // 🔥 NEW: Media Upload States
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
@@ -105,7 +109,7 @@ export default function ChatRoomPage() {
       }, (payload) => {
         const newMsg = payload.new;
         if ((newMsg.sender_id === currentUser.id && newMsg.receiver_id === otherUserId) ||
-            (newMsg.sender_id === otherUserId && newMsg.receiver_id === currentUser.id)) {
+            (newMsg.sender_id === otherUserId && m.receiver_id === currentUser.id)) {
           setMessages((prev) => {
             if (prev.find(m => m.id === newMsg.id || m.tempId === newMsg.id)) return prev;
             return [...prev, { ...newMsg, tempId: newMsg.id }];
@@ -131,16 +135,99 @@ export default function ChatRoomPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); 
   }, [messages]);
 
-  // 🔥 NEW: Toggle Voice Recording
+  // 🔥 NEW: Handle Media File Selection
+  const handleMediaSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm'];
+    if (!validTypes.includes(file.type)) {
+      toast.error("Please select a valid image (JPG, PNG, WEBP) or video (MP4, WEBM)");
+      return;
+    }
+
+    // Validate file size (max 50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error("File size must be less than 50MB");
+      return;
+    }
+
+    await sendMediaMessage(file);
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  //  NEW: Send Media Message (Image/Video)
+  const sendMediaMessage = async (file: File) => {
+    if (!currentUser || !otherUserId) return;
+    setIsUploadingMedia(true);
+    const tempId = `temp-media-${Date.now()}`;
+    const isVideo = file.type.startsWith('video/');
+    const tempMsg = {
+      tempId,
+      listing_id,
+      sender_id: currentUser.id,
+      receiver_id: otherUserId,
+      content: isVideo ? "🎥 Video" : "📷 Photo",
+      media_url: "loading",
+      media_type: isVideo ? 'video' : 'image',
+      is_read: false,
+      created_at: new Date().toISOString(),
+      isFailed: false
+    };
+    setMessages((prev) => [...prev, tempMsg]);
+
+    try {
+      // 1. Upload to Supabase Storage
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${currentUser.id}-${Date.now()}.${fileExt}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("chat-media")
+        .upload(fileName, file, { contentType: file.type });
+
+      if (uploadError) throw uploadError;
+
+      // 2. Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from("chat-media")
+        .getPublicUrl(fileName);
+
+      // 3. Insert into database
+      const { error: dbError } = await supabase.from("messages").insert({
+        listing_id,
+        sender_id: currentUser.id,
+        receiver_id: otherUserId,
+        content: isVideo ? "🎥 Video" : "📷 Photo",
+        media_url: publicUrl,
+        media_type: isVideo ? 'video' : 'image',
+        is_read: false
+      });
+
+      if (dbError) throw dbError;
+
+      // Remove temp message
+      setMessages((prev) => prev.filter(m => m.tempId !== tempId));
+      toast.success(isVideo ? "Video sent!" : "Photo sent!");
+    } catch (error: any) {
+      console.error("Media send error:", error);
+      toast.error("Failed to send media.");
+      setMessages((prev) => prev.map(m => m.tempId === tempId ? { ...m, isFailed: true } : m));
+    } finally {
+      setIsUploadingMedia(false);
+    }
+  };
+
+  // Voice Recording Toggle
   const toggleRecording = async () => {
     if (isRecording) {
-      // Stop recording
       mediaRecorderRef.current?.stop();
       setIsRecording(false);
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
       setRecordingTime(0);
     } else {
-      // Start recording
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const mediaRecorder = new MediaRecorder(stream);
@@ -156,14 +243,12 @@ export default function ChatRoomPage() {
         mediaRecorder.onstop = async () => {
           const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
           await sendAudioMessage(audioBlob);
-          // Stop all tracks to release microphone
           stream.getTracks().forEach(track => track.stop());
         };
 
         mediaRecorder.start();
         setIsRecording(true);
         
-        // Start timer
         let seconds = 0;
         recordingTimerRef.current = setInterval(() => {
           seconds += 1;
@@ -177,7 +262,7 @@ export default function ChatRoomPage() {
     }
   };
 
-  // 🔥 NEW: Send Audio Message
+  // Send Audio Message
   const sendAudioMessage = async (audioBlob: Blob) => {
     if (!currentUser || !otherUserId) return;
     setSending(true);
@@ -188,7 +273,7 @@ export default function ChatRoomPage() {
       sender_id: currentUser.id,
       receiver_id: otherUserId,
       content: "🎤 Voice Message",
-      audio_url: "loading", // Placeholder
+      audio_url: "loading",
       is_read: false,
       created_at: new Date().toISOString(),
       isFailed: false
@@ -196,20 +281,17 @@ export default function ChatRoomPage() {
     setMessages((prev) => [...prev, tempMsg]);
 
     try {
-      // 1. Upload to Supabase Storage
       const fileName = `${currentUser.id}-${Date.now()}.webm`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from("chat-audios")
         .upload(fileName, audioBlob, { contentType: "audio/webm" });
 
       if (uploadError) throw uploadError;
 
-      // 2. Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from("chat-audios")
         .getPublicUrl(fileName);
 
-      // 3. Insert into database
       const { error: dbError } = await supabase.from("messages").insert({
         listing_id,
         sender_id: currentUser.id,
@@ -220,8 +302,6 @@ export default function ChatRoomPage() {
       });
 
       if (dbError) throw dbError;
-
-      // Remove temp message
       setMessages((prev) => prev.filter(m => m.tempId !== tempId));
     } catch (error: any) {
       console.error("Audio send error:", error);
@@ -304,6 +384,15 @@ export default function ChatRoomPage() {
 
   return (
     <main className="flex flex-col h-screen bg-gray-950 text-white">
+      {/* Hidden File Input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleMediaSelect}
+        accept="image/*,video/*"
+        className="hidden"
+      />
+
       <nav className="border-b border-gray-800 bg-gray-950 p-3 flex justify-between items-center sticky top-0 z-50 shadow-lg">
         <Link href="/inbox" className="text-blue-400 hover:text-blue-300 flex items-center gap-2">
           ← Back
@@ -385,13 +474,24 @@ export default function ChatRoomPage() {
                     isMine ? "bg-blue-600 rounded-br-none" : "bg-gray-800 rounded-bl-none"
                   } ${msg.isFailed ? 'opacity-80 border border-red-500/50 cursor-pointer hover:opacity-100' : ''}`}
                 >
-                  {/* 🔥 NEW: Render Audio Player if audio_url exists */}
-                  {msg.audio_url && msg.audio_url !== "loading" ? (
+                  {/* Render Media (Image/Video) */}
+                  {msg.media_url && msg.media_url !== "loading" ? (
+                    msg.media_type === 'image' ? (
+                      <img src={msg.media_url} alt="Shared" className="max-w-full rounded-lg cursor-pointer hover:opacity-90" onClick={() => window.open(msg.media_url, '_blank')} />
+                    ) : (
+                      <video controls src={msg.media_url} className="max-w-full rounded-lg max-h-[300px]" />
+                    )
+                  ) : msg.media_url === "loading" ? (
+                    <div className="flex items-center gap-2 text-sm">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Uploading media...
+                    </div>
+                  ) : msg.audio_url && msg.audio_url !== "loading" ? (
                     <audio controls src={msg.audio_url} className="max-w-[200px] h-8" />
                   ) : msg.audio_url === "loading" ? (
                     <div className="flex items-center gap-2 text-sm">
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Sending voice message...
+                      Sending voice...
                     </div>
                   ) : (
                     <p className="text-sm break-words">{msg.content}</p>
@@ -440,15 +540,28 @@ export default function ChatRoomPage() {
             onChange={(e) => setNewMessage(e.target.value)}
             placeholder="Type a message..."
             className="flex-1 bg-gray-900 border border-gray-700 rounded-full px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
-            disabled={sending}
+            disabled={sending || isUploadingMedia}
           />
         )}
         
-        {/* 🔥 NEW: Microphone Button */}
+        {/* 🔥 NEW: Attachment Button */}
+        <button 
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={sending || isUploadingMedia || isRecording}
+          className="w-12 h-12 rounded-full bg-gray-800 hover:bg-gray-700 flex items-center justify-center transition disabled:opacity-50"
+          title="Send photo or video"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-white">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+          </svg>
+        </button>
+
+        {/* Microphone Button */}
         <button 
           type="button"
           onClick={toggleRecording}
-          disabled={sending}
+          disabled={sending || isUploadingMedia}
           className={`w-12 h-12 rounded-full flex items-center justify-center transition disabled:opacity-50 ${
             isRecording ? "bg-red-600 hover:bg-red-500 animate-pulse" : "bg-gray-800 hover:bg-gray-700"
           }`}
@@ -458,15 +571,15 @@ export default function ChatRoomPage() {
           </svg>
         </button>
 
-        {/* Send Button (Only show when not recording and has text) */}
+        {/* Send Button */}
         {!isRecording && (
           <button 
             type="button"
             onClick={(e) => { e.preventDefault(); handleSendMessage(); }}
-            disabled={sending || !newMessage.trim()} 
+            disabled={sending || isUploadingMedia || !newMessage.trim()} 
             className="bg-blue-600 hover:bg-blue-500 w-12 h-12 rounded-full flex items-center justify-center disabled:opacity-50 disabled:bg-gray-800 transition"
           >
-            {sending ? (
+            {sending || isUploadingMedia ? (
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
             ) : (
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-white">
