@@ -11,7 +11,6 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
   
-  // Profile States
   const [fullName, setFullName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [country, setCountry] = useState("");
@@ -29,7 +28,6 @@ export default function ProfilePage() {
       
       setUser(session.user);
       
-      // Fetch profile data
       const { data, error } = await supabase
         .from("profiles")
         .select("full_name, phone_number, country, avatar_url, latitude, longitude")
@@ -67,14 +65,17 @@ export default function ProfilePage() {
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
       setAvatarUrl(publicUrl);
 
-      // Save avatar URL to DB
-      await supabase.from('profiles').upsert({ 
-        id: user.id, 
+      // 🔥 FIX: Use session.user.id directly for maximum safety
+      const { data: { session } } = await supabase.auth.getSession();
+      const { error: updateError } = await supabase.from('profiles').upsert({ 
+        id: session.user.id, 
         avatar_url: publicUrl
       });
-      
+
+      if (updateError) throw updateError;
       toast.success('Profile picture updated! 📸');
     } catch (error: any) {
+      console.error("Avatar Upload Error:", error);
       toast.error('Error uploading avatar: ' + error.message);
     } finally {
       setUploading(false);
@@ -84,15 +85,24 @@ export default function ProfilePage() {
   // 🔥 SAVE NAME, PHONE, COUNTRY
   const saveDetails = async () => {
     setSaving(true);
+    
+    // 🔥 FIX: Get fresh session and log exactly what we are sending
+    const { data: { session } } = await supabase.auth.getSession();
+    console.log("Attempting to save profile for ID:", session.user.id, { fullName, phoneNumber, country });
+
     const { error } = await supabase.from('profiles').upsert({ 
-      id: user.id, 
+      id: session.user.id, 
       full_name: fullName,
       phone_number: phoneNumber,
       country: country
     });
     
-    if (error) toast.error('Failed to save details: ' + error.message);
-    else toast.success('Profile details saved! ✅');
+    if (error) {
+      console.error("Profile Save Error:", error);
+      toast.error('Failed to save details: ' + error.message);
+    } else {
+      toast.success('Profile details saved! ✅');
+    }
     setSaving(false);
   };
 
@@ -111,8 +121,9 @@ export default function ProfilePage() {
         setLatitude(lat);
         setLongitude(lng);
 
+        const { data: { session } } = await supabase.auth.getSession();
         const { error } = await supabase.from('profiles').upsert({
-          id: user.id,
+          id: session.user.id,
           latitude: lat,
           longitude: lng
         });
@@ -150,8 +161,6 @@ export default function ProfilePage() {
       </nav>
 
       <div className="max-w-md mx-auto p-6 space-y-8">
-        
-        {/* AVATAR UPLOAD */}
         <div className="flex flex-col items-center space-y-4">
           <div className="relative group">
             <div className="w-32 h-32 rounded-full bg-gray-800 border-4 border-gray-700 flex items-center justify-center overflow-hidden shadow-2xl">
@@ -182,82 +191,35 @@ export default function ProfilePage() {
           <p className="text-sm text-gray-400">Tap the camera icon to upload a photo</p>
         </div>
 
-        {/* DETAILS FORM (Name, Phone, Country) */}
         <div className="space-y-4">
           <label className="text-sm font-bold text-gray-400">Personal Details</label>
-          
-          <input
-            type="text"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder="Full Name"
-            className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 transition"
-          />
-          
-          <input
-            type="tel"
-            value={phoneNumber}
-            onChange={(e) => setPhoneNumber(e.target.value)}
-            placeholder="Mobile Number"
-            className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 transition"
-          />
-          
-          {/* ✅ FIXED: Removed "Nepal" example */}
-          <input
-            type="text"
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            placeholder="Country"
-            className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 transition"
-          />
-
-          <button 
-            onClick={saveDetails}
-            disabled={saving}
-            className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl font-bold transition disabled:opacity-50 flex items-center justify-center gap-2"
-          >
+          <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full Name" className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 transition" />
+          <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="Mobile Number" className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 transition" />
+          <input type="text" value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Country" className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 transition" />
+          <button onClick={saveDetails} disabled={saving} className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl font-bold transition disabled:opacity-50 flex items-center justify-center gap-2">
             {saving ? 'Saving...' : 'Save Details'}
           </button>
         </div>
 
-        {/* LOCATION SECTION */}
         <div className="space-y-2">
           <label className="text-sm font-bold text-gray-400">Your Location</label>
           <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
             {latitude && longitude ? (
               <div className="space-y-2">
                 <p className="text-sm text-green-400 flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-                  </svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>
                   Location active
                 </p>
                 <p className="text-xs text-gray-500">Lat: {latitude.toFixed(4)}, Lng: {longitude.toFixed(4)}</p>
-                <button 
-                  onClick={getCurrentLocation}
-                  disabled={locationLoading}
-                  className="text-sm text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1 mt-2"
-                >
+                <button onClick={getCurrentLocation} disabled={locationLoading} className="text-sm text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1 mt-2">
                   {locationLoading ? 'Updating...' : '🔄 Update Location'}
                 </button>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-3">
                 <p className="text-sm text-gray-400 text-center">Enable location to show up in "Sellers Near Me"</p>
-                <button 
-                  onClick={getCurrentLocation}
-                  disabled={locationLoading}
-                  className="w-full bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl font-bold transition flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {locationLoading ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-                    </svg>
-                  )}
+                <button onClick={getCurrentLocation} disabled={locationLoading} className="w-full bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl font-bold transition flex items-center justify-center gap-2 disabled:opacity-50">
+                  {locationLoading ? (<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>) : (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>)}
                   {locationLoading ? 'Getting Location...' : 'Get Current Location'}
                 </button>
               </div>
@@ -265,17 +227,12 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* ACCOUNT INFO */}
         <div className="bg-gray-900 rounded-2xl p-4 border border-gray-800 space-y-2">
           <p className="text-xs text-gray-500">Email Address</p>
           <p className="text-white font-medium break-all">{user.email}</p>
         </div>
 
-        {/* LOGOUT */}
-        <button 
-          onClick={handleLogout}
-          className="w-full bg-red-900/30 border border-red-800 text-red-400 hover:bg-red-900/50 py-4 rounded-2xl font-bold transition mt-8"
-        >
+        <button onClick={handleLogout} className="w-full bg-red-900/30 border border-red-800 text-red-400 hover:bg-red-900/50 py-4 rounded-2xl font-bold transition mt-8">
           Sign Out
         </button>
       </div>

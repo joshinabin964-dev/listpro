@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import LocationSetup from "@/components/LocationSetup";
 
-// 🌍 FULLY EXPANDED GLOBAL CURRENCY MAP (Nothing reduced, everything added!)
+// 🌍 FULLY EXPANDED GLOBAL CURRENCY MAP
 const currencyMap: Record<string, { symbol: string; code: string }> = {
   "Afghanistan": { symbol: "؋", code: "AFN" },
   "Albania": { symbol: "L", code: "ALL" },
@@ -106,6 +106,9 @@ export default function DashboardPage() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
   
+  // 🔥 NEW: State for the dashboard avatar
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
+  
   const [processingNotif, setProcessingNotif] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -116,10 +119,12 @@ export default function DashboardPage() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { router.push("/login"); return; }
 
-    const { data: profile } = await supabase.from("profiles").select("plan, country, latitude, longitude, full_name").eq("id", session.user.id).single();
+    // 🔥 UPDATED: Added avatar_url to the select query
+    const { data: profile } = await supabase.from("profiles").select("plan, country, latitude, longitude, full_name, avatar_url").eq("id", session.user.id).single();
     if (profile) {
       setPlan(profile.plan || "free");
       setUserName(profile.full_name);
+      setAvatarUrl(profile.avatar_url || ""); // 🔥 Save avatar to state
       setCurrencySymbol(getSymbol(profile.country));
     }
 
@@ -247,6 +252,23 @@ export default function DashboardPage() {
                 {plan === 'pro' ? '⭐ Pro' : 'Upgrade'}
               </button>
             </Link>
+
+            {/* 🔥 NEW: Professional Profile Avatar Link */}
+            <Link href="/profile" className="flex items-center gap-2 hover:bg-gray-800 rounded-full p-1 pr-3 transition border border-transparent hover:border-gray-700">
+              <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden border border-gray-600">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-sm font-bold text-gray-300">
+                    {userName ? userName.charAt(0).toUpperCase() : "U"}
+                  </span>
+                )}
+              </div>
+              <span className="hidden md:block text-sm font-medium text-gray-300">
+                {userName || "Profile"}
+              </span>
+            </Link>
+
             <button 
               onClick={handleLogout} 
               disabled={isLoggingOut}
@@ -347,7 +369,7 @@ export default function DashboardPage() {
             </div>
           </Link>
           
-          {/* ✨ NEW: AI Background Remover Card */}
+          {/* ✨ AI Background Remover Card */}
           <Link href="/tools/background-remover" className="block sm:col-span-2 md:col-span-1">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-5 md:p-8 hover:border-indigo-500 transition cursor-pointer group relative overflow-hidden">
               <div className="absolute top-4 right-4">
