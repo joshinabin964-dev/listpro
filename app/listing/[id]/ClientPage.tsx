@@ -64,7 +64,7 @@ export default function ClientPage() {
         setListing(listingData);
         
         const views = listingData.views || 0;
-        let proof = `👁️ ${views} ${views === 1 ? 'person has' : 'people have'} viewed this item`;
+        let proof = `️ ${views} ${views === 1 ? 'person has' : 'people have'} viewed this item`;
         
         if (listingData.is_auction) {
           const { count } = await supabase.from("bids").select("*", { count: "exact", head: true }).eq("listing_id", listingData.id);
@@ -246,7 +246,7 @@ export default function ClientPage() {
         status: "pending"
       });
       if (error) throw error;
-      toast.success("💰 Offer submitted successfully! The seller has been notified.");
+      toast.success("💰 Offer submitted! Seller has been notified.");
       setShowOfferModal(false);
       setOfferAmount("");
     } catch (error: any) {
@@ -265,7 +265,7 @@ export default function ClientPage() {
     const price = `${listing.currency_code === 'NPR' ? 'Rs. ' : '$'}${listing.sale_price}`;
     const tags = listing.category ? `#${listing.category.replace(/\s+/g, '')}` : '#ForSale';
     const brandTag = listing.brand ? `#${listing.brand.replace(/\s+/g, '')}` : '';
-    return `🔥 JUST LISTED ON NABJO! 🔥\n\n📦 **${listing.product_name}**\n💰 Price: ${price}\n✨ Condition: ${listing.condition}\n\n📝 **Details:**\n${listing.ai_description || listing.description}\n\n📍 Location: ${seller?.country || 'Local'}\n🔗 Link in bio to buy securely on Nabjo!\n\n${tags} ${brandTag} #NabjoMarketplace #ForSale #Deal`;
+    return ` JUST LISTED ON NABJO! 🔥\n\n📦 **${listing.product_name}**\n💰 Price: ${price}\n✨ Condition: ${listing.condition}\n\n📝 **Details:**\n${listing.ai_description || listing.description}\n\n📍 Location: ${seller?.country || 'Local'}\n🔗 Link in bio to buy securely on Nabjo!\n\n${tags} ${brandTag} #NabjoMarketplace #ForSale #Deal`;
   };
 
   const downloadShopifyCSV = () => {
@@ -280,13 +280,13 @@ export default function ClientPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("📦 Shopify CSV downloaded!");
+    toast.success(" Shopify CSV downloaded!");
     setShowExportModal(false);
   };
 
   const handleProFeatureClick = (featureName: string) => {
     if (userPlan !== 'pro') {
-      toast.error(`🔒 ${featureName} is a Pro feature! Upgrade to unlock.`);
+      toast.error(` ${featureName} is a Pro feature! Upgrade to unlock.`);
       router.push("/pricing");
       setShowExportModal(false);
     }
@@ -468,11 +468,11 @@ export default function ClientPage() {
                     <div className="flex-1 min-w-[200px] p-3 md:p-4 bg-green-900/20 text-green-400 font-bold rounded-xl text-base md:text-lg text-center border border-green-500/30 flex items-center justify-center gap-2">✅ Reserved for You!</div>
                   ) : currentUser && currentUser.id !== listing.user_id ? (
                     <div className="flex flex-col sm:flex-row gap-3 w-full">
-                      <Link href={`/chat/${listing.id}?user=${listing.user_id}`} className="flex-1 min-w-[200px] p-3 md:p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-base md:text-lg flex items-center justify-center gap-2 text-center">💬 Message</Link>
+                      <Link href={`/chat/${listing.id}?user=${listing.user_id}`} className="flex-1 min-w-[200px] p-3 md:p-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition text-base md:text-lg flex items-center justify-center gap-2 text-center">Message</Link>
                       
                       {/* 🔥 NEW: Make Offer Button */}
                       <button onClick={() => setShowOfferModal(true)} className="flex-1 min-w-[200px] p-3 md:p-4 bg-green-600 hover:bg-green-500 text-white font-bold rounded-xl transition text-base md:text-lg flex items-center justify-center gap-2">
-                        💰 Make Offer
+                         Make Offer
                       </button>
                       
                       <button onClick={handleRequestHold} disabled={isRequestingHold} className="flex-1 min-w-[200px] p-3 md:p-4 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition text-base md:text-lg flex items-center justify-center gap-2">
@@ -496,7 +496,7 @@ export default function ClientPage() {
                   onClick={() => setShowExportModal(true)}
                   className="px-4 md:px-6 py-3 md:py-4 bg-gray-800 hover:bg-gray-700 text-blue-400 font-bold rounded-xl transition border border-gray-700 flex items-center justify-center gap-2 text-sm md:text-base"
                 >
-                  📤 Export / Share Listing {userPlan !== 'pro' && <span className="text-[10px] bg-yellow-500 text-black px-1.5 py-0.5 rounded font-bold">PRO</span>}
+                   Export / Share Listing {userPlan !== 'pro' && <span className="text-[10px] bg-yellow-500 text-black px-1.5 py-0.5 rounded font-bold">PRO</span>}
                 </button>
               )}
 
@@ -535,17 +535,8 @@ export default function ClientPage() {
               <p className="text-xs text-gray-500 mt-2">Listed price: {listing.currency_code === 'NPR' ? 'Rs. ' : '$'}{listing.sale_price}</p>
             </div>
             <div className="flex gap-3">
-              <button 
-                onClick={() => setShowOfferModal(false)} 
-                className="flex-1 p-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleMakeOffer} 
-                disabled={isSubmittingOffer || !offerAmount} 
-                className="flex-1 p-3 bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition"
-              >
+              <button onClick={() => setShowOfferModal(false)} className="flex-1 p-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition">Cancel</button>
+              <button onClick={handleMakeOffer} disabled={isSubmittingOffer || !offerAmount} className="flex-1 p-3 bg-green-600 hover:bg-green-500 disabled:bg-gray-700 text-white font-bold rounded-xl transition">
                 {isSubmittingOffer ? "Submitting..." : "Submit Offer"}
               </button>
             </div>
