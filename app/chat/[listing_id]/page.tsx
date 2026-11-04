@@ -26,16 +26,24 @@ export default function ChatRoomPage() {
       if (!session) { router.push("/login"); return; }
       setCurrentUser(session.user);
       
+      // 🔥 FIX 1: Update current user's last_seen to "Active now"
+      await supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", session.user.id);
+
       if (otherUserId) {
-        const { data: profileData } = await supabase
+        // 🔥 FIX 2: Fetch last_seen along with name and avatar
+        const { data: profileData, error } = await supabase
           .from("profiles")
-          .select("full_name, avatar_url, username")
+          .select("full_name, avatar_url, last_seen")
           .eq("id", otherUserId)
           .single();
-        setOtherUser(profileData);
+          
+        if (error) {
+          console.error("Error fetching profile:", error);
+        } else {
+          setOtherUser(profileData);
+        }
       }
 
-      // Fetch existing messages
       const { data } = await supabase
         .from("messages")
         .select("*")
@@ -49,17 +57,12 @@ export default function ChatRoomPage() {
         );
         setMessages(filtered);
 
-        // 🔥 NEW: MARK AS READ
-        // Find all unread messages sent TO me in this chat and mark them as read
         const unreadMessageIds = filtered
           .filter(m => m.receiver_id === session.user.id && !m.is_read)
           .map(m => m.id);
           
         if (unreadMessageIds.length > 0) {
-          await supabase
-            .from("messages")
-            .update({ is_read: true })
-            .in("id", unreadMessageIds);
+          await supabase.from("messages").update({ is_read: true }).in("id", unreadMessageIds);
         }
       }
       setLoading(false);
@@ -124,7 +127,7 @@ export default function ChatRoomPage() {
       });
       if (error) throw error;
     } catch (error: any) { 
-      toast.error("Failed to send");
+      toast.error("Failed to send: " + error.message);
       setMessages((prev) => prev.filter(m => m.id !== tempId));
     } finally { 
       setSending(false); 
@@ -132,6 +135,26 @@ export default function ChatRoomPage() {
   };
 
   if (loading) return <div className="flex items-center justify-center h-screen bg-gray-950 text-white">Loading...</div>;
+
+  // 🔥 FIX 3: Early return if no user is selected (prevents "User" fallback)
+  if (!otherUserId) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-950 text-white">
+        <div className="text-center">
+          <p className="text-xl font-bold mb-4">No conversation selected</p>
+          <Link href="/inbox" className="text-blue-400 hover:text-blue-300">← Go to Inbox</Link>
+        </div>
+      </div>
+    );
+  }
+
+  // 🔥 FIX 4: Smart Active Status Logic
+  const isActiveNow = otherUser?.last_seen && (new Date().getTime() - new Date(otherUser.last_seen).getTime()) < (5 * 60 * 1000);
+  const statusText = isActiveNow 
+    ? "Active now" 
+    : otherUser?.last_seen 
+      ? `Last seen ${new Date(otherUser.last_seen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+      : "Offline";
 
   return (
     <main className="flex flex-col h-screen bg-gray-950 text-white">
@@ -154,7 +177,10 @@ export default function ChatRoomPage() {
             <span className="font-bold text-sm text-white leading-tight">
               {otherUser?.full_name || "User"}
             </span>
-            <span className="text-[10px] text-green-400">Online</span>
+            {/* 🔥 Dynamic Active Status Color */}
+            <span className={`text-[10px] ${isActiveNow ? 'text-green-400' : 'text-gray-400'}`}>
+              {statusText}
+            </span>
           </div>
         </div>
 
