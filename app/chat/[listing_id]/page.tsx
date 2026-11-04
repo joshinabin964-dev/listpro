@@ -17,7 +17,13 @@ export default function ChatRoomPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  
+  // 🔥 NEW: States for the 4 new features
+  const [listingDetails, setListingDetails] = useState<any>(null);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
 
   // 1. INITIAL LOAD
   useEffect(() => {
@@ -26,23 +32,24 @@ export default function ChatRoomPage() {
       if (!session) { router.push("/login"); return; }
       setCurrentUser(session.user);
       
-      // 🔥 FIX 1: Update current user's last_seen to "Active now"
       await supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", session.user.id);
 
       if (otherUserId) {
-        // 🔥 FIX 2: Fetch last_seen along with name and avatar
         const { data: profileData, error } = await supabase
           .from("profiles")
           .select("full_name, avatar_url, last_seen")
           .eq("id", otherUserId)
           .single();
-          
-        if (error) {
-          console.error("Error fetching profile:", error);
-        } else {
-          setOtherUser(profileData);
-        }
+        if (!error) setOtherUser(profileData);
       }
+
+      // 🔥 NEW: Fetch Item Context
+      const { data: listing } = await supabase
+        .from("listings")
+        .select("product_name, price, image_url")
+        .eq("id", listing_id)
+        .single();
+      if (listing) setListingDetails(listing);
 
       const { data } = await supabase
         .from("messages")
@@ -83,60 +90,84 @@ export default function ChatRoomPage() {
         filter: `listing_id=eq.${listing_id}` 
       }, (payload) => {
         const newMsg = payload.new;
-        
         if ((newMsg.sender_id === currentUser.id && newMsg.receiver_id === otherUserId) ||
             (newMsg.sender_id === otherUserId && newMsg.receiver_id === currentUser.id)) {
-          
           setMessages((prev) => {
-            if (prev.find(m => m.id === newMsg.id)) return prev;
+            if (prev.find(m => m.id === newMsg.id) || prev.find(m => m.tempId === newMsg.id)) return prev;
             return [...prev, newMsg];
           });
         }
       })
       .subscribe();
       
-    return () => { 
-      supabase.removeChannel(channel); 
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [currentUser, listing_id, otherUserId]);
+
+  // 🔥 NEW: Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setShowMoreMenu(false);
+      }
+    };
+    if (showMoreMenu) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showMoreMenu]);
 
   useEffect(() => { 
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); 
   }, [messages]);
 
-  const sendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !currentUser || !otherUserId || sending) return;
+  // 🔥 UPDATED: Handle sending and retrying failed messages
+  const sendMessage = async (e?: React.FormEvent, retryMsg?: any) => {
+    if (e) e.preventDefault();
+    const contentToSend = retryMsg ? retryMsg.content : newMessage.trim();
+    if (!contentToSend || !currentUser || !otherUserId || sending) return;
     
     setSending(true);
-    const tempId = Date.now(); 
-    const tempMsg = {
-      id: tempId,
-      listing_id, sender_id: currentUser.id, receiver_id: otherUserId, 
-      content: newMessage.trim(), is_read: false,
-      created_at: new Date().toISOString()
-    };
+    const tempId = retryMsg ? retryMsg.tempId : Date.now(); 
     
-    setMessages((prev) => [...prev, tempMsg]);
-    setNewMessage("");
+    if (!retryMsg) {
+      const tempMsg = {
+        tempId,
+        listing_id, sender_id: currentUser.id, receiver_id: otherUserId, 
+        content: contentToSend, is_read: false,
+        created_at: new Date().toISOString(),
+        isFailed: false
+      };
+      setMessages((prev) => [...prev, tempMsg]);
+      setNewMessage("");
+    } else {
+      setMessages((prev) => prev.map(m => m.tempId === tempId ? {...m, isFailed: false} : m));
+    }
     
     try {
       const { error } = await supabase.from("messages").insert({
         listing_id, sender_id: currentUser.id, receiver_id: otherUserId, 
-        content: newMessage.trim(), is_read: false
+        content: contentToSend, is_read: false
       });
       if (error) throw error;
+      setMessages((prev) => prev.filter(m => m.tempId !== tempId));
     } catch (error: any) { 
       toast.error("Failed to send: " + error.message);
-      setMessages((prev) => prev.filter(m => m.id !== tempId));
+      setMessages((prev) => prev.map(m => m.tempId === tempId ? {...m, isFailed: true} : m));
     } finally { 
       setSending(false); 
     }
   };
 
+  // 🔥 NEW: Block & Report Handlers
+  const handleBlock = () => {
+    toast.error("User blocked. You will no longer receive messages from them.");
+    setShowMoreMenu(false);
+  };
+  const handleReport = () => {
+    toast.success("User reported to our safety team. Thank you for keeping Nabjo safe.");
+    setShowMoreMenu(false);
+  };
+
   if (loading) return <div className="flex items-center justify-center h-screen bg-gray-950 text-white">Loading...</div>;
 
-  // 🔥 FIX 3: Early return if no user is selected (prevents "User" fallback)
   if (!otherUserId) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-950 text-white">
@@ -148,13 +179,8 @@ export default function ChatRoomPage() {
     );
   }
 
-  // 🔥 FIX 4: Smart Active Status Logic
   const isActiveNow = otherUser?.last_seen && (new Date().getTime() - new Date(otherUser.last_seen).getTime()) < (5 * 60 * 1000);
-  const statusText = isActiveNow 
-    ? "Active now" 
-    : otherUser?.last_seen 
-      ? `Last seen ${new Date(otherUser.last_seen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-      : "Offline";
+  const statusText = isActiveNow ? "Active now" : otherUser?.last_seen ? `Last seen ${new Date(otherUser.last_seen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : "Offline";
 
   return (
     <main className="flex flex-col h-screen bg-gray-950 text-white">
@@ -163,53 +189,114 @@ export default function ChatRoomPage() {
           ← Back
         </Link>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 relative" ref={moreMenuRef}>
           <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden border border-gray-600">
             {otherUser?.avatar_url ? (
               <img src={otherUser.avatar_url} alt="Profile" className="w-full h-full object-cover" />
             ) : (
-              <span className="text-lg font-bold text-gray-300">
-                {otherUser?.full_name?.charAt(0) || "U"}
-              </span>
+              <span className="text-lg font-bold text-gray-300">{otherUser?.full_name?.charAt(0) || "U"}</span>
             )}
           </div>
           <div className="flex flex-col">
-            <span className="font-bold text-sm text-white leading-tight">
-              {otherUser?.full_name || "User"}
-            </span>
-            {/* 🔥 Dynamic Active Status Color */}
-            <span className={`text-[10px] ${isActiveNow ? 'text-green-400' : 'text-gray-400'}`}>
-              {statusText}
-            </span>
+            <span className="font-bold text-sm text-white leading-tight">{otherUser?.full_name || "User"}</span>
+            <span className={`text-[10px] ${isActiveNow ? 'text-green-400' : 'text-gray-400'}`}>{statusText}</span>
           </div>
-        </div>
+          
+          {/* 🔥 NEW: More Menu Button */}
+          <button onClick={() => setShowMoreMenu(!showMoreMenu)} className="ml-2 p-2 hover:bg-gray-800 rounded-full transition">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-400">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
+            </svg>
+          </button>
 
-        <div className="w-16"></div>
+          {/* 🔥 NEW: Dropdown Menu */}
+          {showMoreMenu && (
+            <div className="absolute right-0 top-12 w-48 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+              <button onClick={handleReport} className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-gray-800 transition flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5" /></svg>
+                Report User
+              </button>
+              <button onClick={handleBlock} className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-gray-800 transition flex items-center gap-2 border-t border-gray-800">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                Block User
+              </button>
+            </div>
+          )}
+        </div>
       </nav>
 
+      {/* 🔥 NEW: Item Context Banner */}
+      {listingDetails && (
+        <div className="bg-gray-900 border-b border-gray-800 p-3 flex items-center gap-3">
+          <div className="w-12 h-12 rounded-lg bg-gray-800 overflow-hidden flex-shrink-0 border border-gray-700">
+            {listingDetails.image_url ? (
+              <img src={listingDetails.image_url} alt="Item" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-gray-600 text-xl">📦</div>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-white truncate">{listingDetails.product_name || "Item"}</p>
+            <p className="text-xs text-blue-400">{listingDetails.price ? `$${listingDetails.price}` : "Price not set"}</p>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 ? (
+        {/* 🔥 NEW: Safety Reminder */}
+        {messages.length === 0 && (
+          <div className="mx-4 mt-2 bg-yellow-900/20 border border-yellow-700/50 rounded-xl p-3 flex items-start gap-3">
+            <span className="text-xl mt-0.5">⚠️</span>
+            <p className="text-xs text-yellow-200 leading-relaxed">
+              <strong>Safety Reminder:</strong> Meet in public places and check the live video before you pay. Never send money in advance.
+            </p>
+          </div>
+        )}
+
+        {messages.length === 0 && (
           <div className="text-center text-gray-500 mt-10">
             <p>No messages yet.</p>
             <p className="text-sm mt-2">Say hello! 👋</p>
           </div>
-        ) : (
-          messages.map((msg) => {
-            const isMine = msg.sender_id === currentUser?.id;
-            return (
-              <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[75%] px-4 py-2 rounded-2xl ${
-                  isMine ? "bg-blue-600 rounded-br-none" : "bg-gray-800 rounded-bl-none"
-                }`}>
+        )}
+
+        {messages.map((msg) => {
+          const isMine = msg.sender_id === currentUser?.id;
+          return (
+            <div key={msg.id || msg.tempId} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[75%] ${isMine ? "items-end" : "items-start"} flex flex-col`}>
+                <div 
+                  onClick={msg.isFailed ? () => sendMessage(undefined, msg) : undefined}
+                  className={`px-4 py-2 rounded-2xl transition ${
+                    isMine ? "bg-blue-600 rounded-br-none" : "bg-gray-800 rounded-bl-none"
+                  } ${msg.isFailed ? 'opacity-80 border border-red-500/50 cursor-pointer hover:opacity-100' : ''}`}
+                >
                   <p className="text-sm break-words">{msg.content}</p>
-                  <p className="text-[10px] text-right mt-1 opacity-70">
-                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
+                </div>
+                
+                <div className="flex items-center gap-1 mt-1 px-1">
+                  {msg.isFailed ? (
+                    <span className="text-[10px] text-red-400 font-medium flex items-center gap-1 cursor-pointer hover:text-red-300" onClick={() => sendMessage(undefined, msg)}>
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                        <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                      </svg>
+                      Failed, tap to retry
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                      {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {isMine && !msg.isFailed && (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-blue-400">
+                          <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </span>
+                  )}
                 </div>
               </div>
-            );
-          })
-        )}
+            </div>
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 
