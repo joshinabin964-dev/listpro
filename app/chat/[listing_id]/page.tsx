@@ -111,7 +111,7 @@ export default function ChatRoomPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // 2. LIVE REALTIME LISTENER (🔥 FIXED DELETE HANDLING)
+  // 2. LIVE REALTIME LISTENER
   useEffect(() => {
     if (!currentUser || !listing_id || !otherUserId) return;
     
@@ -124,7 +124,6 @@ export default function ChatRoomPage() {
         filter: `listing_id=eq.${listing_id}` 
       }, (payload) => {
         setMessages((prev) => {
-          // 🔥 FIX: Handle DELETE events properly (payload.new is null on delete)
           if (payload.eventType === 'DELETE') {
             return prev.filter(msg => msg.id !== payload.old.id);
           }
@@ -196,27 +195,42 @@ export default function ChatRoomPage() {
     setActiveReactionMenu(null);
   };
 
+  // 🔥 FIXED: Edit Message (Updates screen instantly)
   const handleEditMessage = async (msgId: string) => {
     if (!editText.trim()) return;
+    
+    // 1. Update screen instantly
+    setMessages((prev) => prev.map((m) => 
+        m.id === msgId ? { ...m, content: editText.trim(), edited_at: new Date().toISOString() } : m
+    ));
+    setEditingMessageId(null);
+    setEditText("");
+
+    // 2. Update database in background
     const { error } = await supabase
         .from("messages")
         .update({ content: editText.trim(), edited_at: new Date().toISOString() })
         .eq("id", msgId);
+        
     if (error) {
         toast.error("Failed to edit message");
     } else {
-        setEditingMessageId(null);
-        setEditText("");
         toast.success("Message edited");
     }
   };
 
+  // 🔥 FIXED: Delete Message (Vanishes instantly without going back)
   const handleDeleteMessage = async (msgId: string) => {
+    // 1. Remove from screen instantly
+    setMessages((prev) => prev.filter((m) => m.id !== msgId));
+    setActiveMessageMenu(null);
+
+    // 2. Delete from database in background
     const { error } = await supabase.from("messages").delete().eq("id", msgId);
+    
     if (error) {
         toast.error("Failed to delete message");
     } else {
-        setActiveMessageMenu(null);
         toast.success("Message deleted for everyone");
     }
   };
@@ -334,7 +348,6 @@ export default function ChatRoomPage() {
   const isActiveNow = otherUser?.last_seen && (new Date().getTime() - new Date(otherUser.last_seen).getTime()) < (5 * 60 * 1000);
   const statusText = isActiveNow ? "Active now" : otherUser?.last_seen ? `Last seen ${new Date(otherUser.last_seen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : "Offline";
 
-  // Filter out expired disappearing messages for rendering
   const validMessages = messages.filter(msg => !msg.disappears_at || new Date(msg.disappears_at) > new Date());
 
   return (
