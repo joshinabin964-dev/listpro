@@ -8,14 +8,31 @@ import toast from "react-hot-toast";
 const EMOJI_OPTIONS = ["❤️", "👍", "😂", "😮", "😢", "🙏", "🔥", "👎"];
 
 // 🔥 NEW: Custom hook for Long Press (Mobile) and Right Click (Desktop)
-const useLongPress = (callback: (e: any) => void, ms = 500) => {
+const useLongPress = (callback: (e: any) => void, onClick: (e: any) => void, ms = 500) => {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const isLongPress = useRef(false);
+  
   const start = (e: any) => {
-    timerRef.current = setTimeout(() => callback(e), ms);
+    isLongPress.current = false;
+    timerRef.current = setTimeout(() => {
+      isLongPress.current = true;
+      callback(e);
+    }, ms);
   };
+  
   const clear = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
   };
+
+  const handleClick = (e: any) => {
+    if (isLongPress.current) {
+      isLongPress.current = false;
+      e.stopPropagation();
+      return;
+    }
+    onClick(e);
+  };
+
   return {
     onTouchStart: start,
     onTouchEnd: clear,
@@ -23,7 +40,8 @@ const useLongPress = (callback: (e: any) => void, ms = 500) => {
     onMouseDown: start,
     onMouseUp: clear,
     onMouseLeave: clear,
-    onContextMenu: (e: any) => { e.preventDefault(); callback(e); }
+    onContextMenu: (e: any) => { e.preventDefault(); callback(e); },
+    onClick: handleClick
   };
 };
 
@@ -404,11 +422,18 @@ export default function ChatRoomPage() {
           const otherUserReaction = msg.reactions?.[otherUserId];
           const isEditing = editingMessageId === msg.id;
           
-          // 🔥 LONG PRESS HOOK FOR REACTIONS
-          const longPressProps = useLongPress((e) => {
-            e.preventDefault();
-            setActiveReactionMenu(msg.id);
-          });
+          // 🔥 LONG PRESS HOOK FOR REACTIONS & TAP FOR REPLY
+          const longPressProps = useLongPress(
+            (e) => {
+              e.preventDefault();
+              setActiveReactionMenu(msg.id);
+            },
+            (e) => {
+              if (!isEditing && activeReactionMenu !== msg.id && activeMessageMenu !== msg.id) {
+                setReplyTo({ id: msg.id, content: msg.content, sender_name: isMine ? 'You' : (otherUser?.full_name || 'User') });
+              }
+            }
+          );
 
           return (
             <div key={msg.id || msg.tempId} className={`flex ${isMine ? "justify-end" : "justify-start"} items-end gap-2`}>
@@ -462,11 +487,6 @@ export default function ChatRoomPage() {
                 {/* 🔥 TAP TO REPLY (WhatsApp Style) + LONG PRESS SUPPORT */}
                 <div 
                   {...longPressProps}
-                  onClick={() => {
-                    if (!isEditing && activeReactionMenu !== msg.id && activeMessageMenu !== msg.id) {
-                      setReplyTo({ id: msg.id, content: msg.content, sender_name: isMine ? 'You' : (otherUser?.full_name || 'User') });
-                    }
-                  }}
                   className={`px-4 py-2 rounded-2xl transition relative cursor-pointer ${isMine ? "bg-blue-600 rounded-br-none" : "bg-gray-800 rounded-bl-none"} ${msg.disappears_at ? 'border border-orange-500/30' : ''} active:scale-[0.98]`}
                 >
                   {isEditing ? (
