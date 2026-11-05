@@ -17,7 +17,12 @@ export default function GlobalCallListener() {
   useEffect(() => {
     const getUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) setCurrentUser(session.user);
+      if (session) {
+        console.log("✅ GlobalCallListener: User authenticated:", session.user.id);
+        setCurrentUser(session.user);
+      } else {
+        console.log("⚠️ GlobalCallListener: No user session");
+      }
     };
     getUser();
 
@@ -31,15 +36,22 @@ export default function GlobalCallListener() {
   }, []);
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      console.log("⏳ GlobalCallListener: Waiting for user to load...");
+      return;
+    }
+
+    console.log("📡 GlobalCallListener: Subscribing to calls for receiver_id =", currentUser.id);
 
     const channel = supabase.channel(`global-calls-${currentUser.id}`)
       // Listen for calls RECEIVED by the current user
       .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `receiver_id=eq.${currentUser.id}` }, (payload) => {
+        console.log("🔔 CALL EVENT TRIGGERED!", payload);
         const call = payload.new || payload.old;
         if (!call) return;
 
         if (payload.eventType === "INSERT" && call.status === "ringing") {
+          console.log("✅ MATCH! Setting state to incoming");
           setCallData(call);
           setCallType(call.type);
           setCallStatus("incoming");
@@ -59,32 +71,14 @@ export default function GlobalCallListener() {
           resetCallState();
         }
       })
-      // Listen for calls INITIATED by the current user (to show "Calling..." screen globally)
-      .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `caller_id=eq.${currentUser.id}` }, (payload) => {
-        const call = payload.new || payload.old;
-        if (!call) return;
+      .subscribe((status) => {
+        console.log("📡 Subscription Status:", status);
+      });
 
-        if (payload.eventType === "INSERT" && call.status === "ringing") {
-          setCallData(call);
-          setCallType(call.type);
-          setCallStatus("calling");
-        } else if (payload.eventType === "UPDATE") {
-          if (call.status === "accepted") {
-            setCallStatus("connected");
-            if (!callTimerRef.current) {
-              callTimerRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
-            }
-          } else if (call.status === "rejected" || call.status === "ended") {
-            resetCallState();
-            toast.info(call.status === "rejected" ? "Call was declined." : "Call ended.");
-          }
-        } else if (payload.eventType === "DELETE") {
-          resetCallState();
-        }
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    return () => { 
+      console.log("🛑 GlobalCallListener: Unsubscribing");
+      supabase.removeChannel(channel); 
+    };
   }, [currentUser]);
 
   const resetCallState = () => {
@@ -99,20 +93,25 @@ export default function GlobalCallListener() {
 
   const handleAcceptCall = async () => {
     if (!callData) return;
+    console.log("📞 Accepting call:", callData.id);
     const { error } = await supabase.from("calls").update({ status: "accepted" }).eq("id", callData.id);
     if (!error) {
       router.push(`/chat/${callData.listing_id}?user=${callData.caller_id}`);
+    } else {
+      console.error("Failed to accept call:", error);
     }
   };
 
   const handleDeclineCall = async () => {
     if (!callData) return;
+    console.log("📞 Declining call:", callData.id);
     await supabase.from("calls").update({ status: "rejected" }).eq("id", callData.id);
     resetCallState();
   };
 
   const handleEndCall = async () => {
     if (!callData) return;
+    console.log("📞 Ending call:", callData.id);
     await supabase.from("calls").update({ status: "ended" }).eq("id", callData.id);
     resetCallState();
     toast.info("Call ended.");
