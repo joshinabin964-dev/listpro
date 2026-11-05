@@ -31,7 +31,6 @@ export default function ChatRoomPage() {
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const [activeReactionMenu, setActiveReactionMenu] = useState<string | null>(null);
   
-  // 🔥 NEW: Edit, Delete, and Disappearing States
   const [disappearingEnabled, setDisappearingEnabled] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
@@ -112,7 +111,7 @@ export default function ChatRoomPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // 2. LIVE REALTIME LISTENER
+  // 2. LIVE REALTIME LISTENER (🔥 FIXED DELETE HANDLING)
   useEffect(() => {
     if (!currentUser || !listing_id || !otherUserId) return;
     
@@ -124,20 +123,25 @@ export default function ChatRoomPage() {
         table: "messages", 
         filter: `listing_id=eq.${listing_id}` 
       }, (payload) => {
-        const newMsg = payload.new;
-        if ((newMsg.sender_id === currentUser.id && newMsg.receiver_id === otherUserId) ||
-            (newMsg.sender_id === otherUserId && newMsg.receiver_id === currentUser.id)) {
-          setMessages((prev) => {
+        setMessages((prev) => {
+          // 🔥 FIX: Handle DELETE events properly (payload.new is null on delete)
+          if (payload.eventType === 'DELETE') {
+            return prev.filter(msg => msg.id !== payload.old.id);
+          }
+          
+          const newMsg = payload.new;
+          if ((newMsg.sender_id === currentUser.id && newMsg.receiver_id === otherUserId) ||
+              (newMsg.sender_id === otherUserId && newMsg.receiver_id === currentUser.id)) {
+            
             if (payload.eventType === 'UPDATE') {
                 return prev.map(msg => msg.id === newMsg.id ? { ...msg, ...newMsg } : msg);
             }
-            if (payload.eventType === 'DELETE') {
-                return prev.filter(msg => msg.id !== payload.old.id);
-            }
+            
             if (prev.find(msg => msg.id === newMsg.id || msg.tempId === newMsg.id)) return prev;
             return [...prev, { ...newMsg, tempId: newMsg.id }];
-          });
-        }
+          }
+          return prev;
+        });
       })
       .on("broadcast", { event: "typing" }, (payload) => {
         if (payload.user_id === otherUserId) {
@@ -192,7 +196,6 @@ export default function ChatRoomPage() {
     setActiveReactionMenu(null);
   };
 
-  // 🔥 NEW: Edit Message
   const handleEditMessage = async (msgId: string) => {
     if (!editText.trim()) return;
     const { error } = await supabase
@@ -208,7 +211,6 @@ export default function ChatRoomPage() {
     }
   };
 
-  // 🔥 NEW: Delete Message (Unsend)
   const handleDeleteMessage = async (msgId: string) => {
     const { error } = await supabase.from("messages").delete().eq("id", msgId);
     if (error) {
@@ -361,7 +363,6 @@ export default function ChatRoomPage() {
         </div>
       </nav>
 
-      {/* 🔥 NEW: Disappearing Messages Toggle */}
       <div className="bg-gray-900 border-b border-gray-800 px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
             <span className="text-sm text-gray-300">Disappearing Messages</span>
@@ -414,7 +415,6 @@ export default function ChatRoomPage() {
                   </div>
                 )}
 
-                {/* 🔥 NEW: Message Options Menu (Edit/Delete) */}
                 {isMine && !isEditing && (
                     <button 
                         onClick={(e) => { e.stopPropagation(); setActiveMessageMenu(activeMessageMenu === msg.id ? null : msg.id); }}
