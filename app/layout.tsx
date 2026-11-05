@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google'
 import { Toaster } from 'react-hot-toast'
 import { Analytics } from "@vercel/analytics/react"
 import Bouncer from '@/components/Bouncer'
+import GlobalCallListener from '@/components/GlobalCallListener' // 🔥 ADD THIS
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -11,7 +12,6 @@ export const metadata: Metadata = {
   title: 'Nabjo - Scam-Proof Marketplace & Free AI Seller Tools',
   description: 'The safest place to buy and sell online. Features a free in-browser AI background remover, live video verification, and QR-code safe handoffs. No scams, no fees.',
   keywords: ['marketplace', 'buy and sell', 'AI background remover', 'scam proof', 'OLX alternative', 'Facebook marketplace alternative', 'free AI tools for sellers', 'Nabjo', 'safe marketplace', 'QR handoff', 'live video verification'],
-  
   openGraph: {
     title: 'Nabjo - Scam-Proof Marketplace & Free AI Tools',
     description: 'Stop getting scammed on marketplaces. Use Nabjo for safe QR handoffs, live video verification, and free AI listing tools.',
@@ -20,12 +20,9 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_US',
   },
-  
-  // 🛡️ GOOGLE SEARCH CONSOLE VERIFICATION
   verification: {
     google: 'C9-b6l7fK_-byzHo_0_bCmIio0lStlwoiwZ2cahTqtQ',
   },
-  // 👆 END OF VERIFICATION 👆
 }
 
 export default function RootLayout({
@@ -36,10 +33,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        {/* 🛡️ THE BOUNCER: Wraps the whole app to kick out banned users instantly */}
         <Bouncer>
           {children}
         </Bouncer>
+        
+        {/* 🔥 ADD GLOBAL CALL LISTENER HERE */}
+        <GlobalCallListener />
         
         <Toaster 
           position="top-center" 
@@ -51,8 +50,6 @@ export default function RootLayout({
             },
           }}
         />
-        
-        {/* 📊 VERCEL ANALYTICS: Tracks visitors and page views */}
         <Analytics />
       </body>
     </html>

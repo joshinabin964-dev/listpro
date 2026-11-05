@@ -30,18 +30,11 @@ export default function ChatRoomPage() {
   
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const [activeReactionMenu, setActiveReactionMenu] = useState<string | null>(null);
-  
   const [disappearingEnabled, setDisappearingEnabled] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [activeMessageMenu, setActiveMessageMenu] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<any>(null);
-  
-  // 🔥 CALLING STATES
-  const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'incoming' | 'connected'>('idle');
-  const [callType, setCallType] = useState<'audio' | 'video' | null>(null);
-  const [callDuration, setCallDuration] = useState(0);
-  const callTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
@@ -60,20 +53,11 @@ export default function ChatRoomPage() {
       await supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", session.user.id);
 
       if (otherUserId) {
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("full_name, avatar_url, last_seen")
-          .eq("id", otherUserId)
-          .single();
+        const { data: profileData } = await supabase.from("profiles").select("full_name, avatar_url, last_seen").eq("id", otherUserId).single();
         if (profileData) setOtherUser(profileData);
       }
 
-      const { data: listing } = await supabase
-        .from("listings")
-        .select("product_name, title, name, price, image_url, image")
-        .eq("id", listing_id)
-        .single();
-      
+      const { data: listing } = await supabase.from("listings").select("product_name, title, name, price, image_url, image").eq("id", listing_id).single();
       if (listing) {
         setListingDetails({
           displayName: listing.product_name || listing.title || listing.name || "Item",
@@ -82,25 +66,13 @@ export default function ChatRoomPage() {
         });
       }
 
-      const { data } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("listing_id", listing_id)
-        .order("created_at", { ascending: true });
-      
+      const { data } = await supabase.from("messages").select("*").eq("listing_id", listing_id).order("created_at", { ascending: true });
       if (data) {
-        const filtered = data.filter(m => 
-          (m.sender_id === session.user.id && m.receiver_id === otherUserId) ||
-          (m.sender_id === otherUserId && m.receiver_id === session.user.id)
-        );
-        
+        const filtered = data.filter(m => (m.sender_id === session.user.id && m.receiver_id === otherUserId) || (m.sender_id === otherUserId && m.receiver_id === session.user.id));
         const mappedMessages = filtered.map(m => ({ ...m, tempId: m.id }));
         setMessages(mappedMessages);
 
-        const unreadMessageIds = filtered
-          .filter(m => m.receiver_id === session.user.id && !m.is_read)
-          .map(m => m.id);
-          
+        const unreadMessageIds = filtered.filter(m => m.receiver_id === session.user.id && !m.is_read).map(m => m.id);
         if (unreadMessageIds.length > 0) {
           await supabase.from("messages").update({ is_read: true }).in("id", unreadMessageIds);
         }
@@ -115,17 +87,15 @@ export default function ChatRoomPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // 2. LIVE REALTIME LISTENER (Messages + Calls)
+  // 2. LIVE REALTIME LISTENER (Messages Only)
   useEffect(() => {
     if (!currentUser || !listing_id) return;
-    
     const channel = supabase.channel(`chat-room-${listing_id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter: `listing_id=eq.${listing_id}` }, (payload) => {
         setMessages((prev) => {
           if (payload.eventType === 'DELETE') return prev.filter(msg => msg.id !== payload.old.id);
           const newMsg = payload.new;
-          if ((newMsg.sender_id === currentUser.id && newMsg.receiver_id === otherUserId) ||
-              (newMsg.sender_id === otherUserId && newMsg.receiver_id === currentUser.id)) {
+          if ((newMsg.sender_id === currentUser.id && newMsg.receiver_id === otherUserId) || (newMsg.sender_id === otherUserId && newMsg.receiver_id === currentUser.id)) {
             if (payload.eventType === 'UPDATE') return prev.map(msg => msg.id === newMsg.id ? { ...msg, ...newMsg } : msg);
             if (prev.find(msg => msg.id === newMsg.id || msg.tempId === newMsg.id)) return prev;
             return [...prev, { ...newMsg, tempId: newMsg.id }];
@@ -136,50 +106,9 @@ export default function ChatRoomPage() {
       .on("broadcast", { event: "typing" }, (payload) => {
         if (payload.user_id === otherUserId) setIsOtherUserTyping(payload.is_typing);
       })
-      // 🔥 LISTEN FOR CALLS
-      .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `listing_id=eq.${listing_id}` }, (payload) => {
-        const call = payload.new || payload.old;
-        if (!call) return;
-
-        if (payload.eventType === 'INSERT') {
-          if (call.receiver_id === currentUser.id && call.status === 'ringing') {
-            setCallType(call.type);
-            setCallStatus('incoming');
-            toast.success(`Incoming ${call.type} call from ${otherUser?.full_name || 'User'}!`);
-          }
-        } else if (payload.eventType === 'UPDATE') {
-          if (call.caller_id === currentUser.id || call.receiver_id === currentUser.id) {
-            if (call.status === 'accepted') {
-              setCallStatus('connected');
-              if (!callTimerRef.current) {
-                callTimerRef.current = setInterval(() => {
-                  setCallDuration(prev => prev + 1);
-                }, 1000);
-              }
-            } else if (call.status === 'rejected' || call.status === 'ended') {
-              setCallStatus('idle');
-              setCallDuration(0);
-              if (callTimerRef.current) {
-                clearInterval(callTimerRef.current);
-                callTimerRef.current = null;
-              }
-              if (call.status === 'rejected') toast.info("Call was declined.");
-              else toast.info("Call ended.");
-            }
-          }
-        } else if (payload.eventType === 'DELETE') {
-          setCallStatus('idle');
-          setCallDuration(0);
-          if (callTimerRef.current) {
-            clearInterval(callTimerRef.current);
-            callTimerRef.current = null;
-          }
-        }
-      })
       .subscribe();
-      
     return () => { supabase.removeChannel(channel); };
-  }, [currentUser, listing_id, otherUserId, otherUser?.full_name]);
+  }, [currentUser, listing_id, otherUserId]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -232,12 +161,9 @@ export default function ChatRoomPage() {
     toast.success("Message deleted for everyone");
   };
 
-  // 🔥 CALL FUNCTIONS
+  // 🔥 SIMPLE CALL TRIGGER (Global Listener handles the rest)
   const startCall = async (type: 'audio' | 'video') => {
-    setCallType(type);
-    setCallStatus('calling');
     const loadingToast = toast.loading(`Initiating ${type} call...`);
-    
     const { error } = await supabase.from('calls').insert({
       caller_id: currentUser.id,
       receiver_id: otherUserId,
@@ -245,60 +171,9 @@ export default function ChatRoomPage() {
       type,
       status: 'ringing'
     });
-    
     toast.dismiss(loadingToast);
-    if (error) {
-      toast.error("Failed to start call");
-      setCallStatus('idle');
-    } else {
-      toast.success("Calling...");
-    }
-  };
-
-  const handleAcceptCall = async () => {
-    const { error } = await supabase
-      .from('calls')
-      .update({ status: 'accepted' })
-      .eq('receiver_id', currentUser.id)
-      .eq('status', 'ringing')
-      .eq('listing_id', listing_id);
-    
-    if (!error) {
-      setCallStatus('connected');
-      if (!callTimerRef.current) {
-        callTimerRef.current = setInterval(() => {
-          setCallDuration(prev => prev + 1);
-        }, 1000);
-      }
-      toast.success("Call connected!");
-    }
-  };
-
-  const handleDeclineCall = async () => {
-    await supabase
-      .from('calls')
-      .update({ status: 'rejected' })
-      .eq('receiver_id', currentUser.id)
-      .eq('status', 'ringing')
-      .eq('listing_id', listing_id);
-    setCallStatus('idle');
-  };
-
-  const handleEndCall = async () => {
-    // 🔥 FIX: Use .neq instead of .in for bulletproof real-time updates
-    await supabase
-      .from('calls')
-      .update({ status: 'ended' })
-      .eq('listing_id', listing_id)
-      .neq('status', 'ended');
-    
-    setCallStatus('idle');
-    setCallDuration(0);
-    if (callTimerRef.current) {
-      clearInterval(callTimerRef.current);
-      callTimerRef.current = null;
-    }
-    toast.info("Call ended.");
+    if (error) toast.error("Failed to start call");
+    else toast.success("Calling...");
   };
 
   const handleMediaSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -423,7 +298,6 @@ export default function ChatRoomPage() {
 
       <nav className="border-b border-gray-800 bg-gray-950 p-3 flex justify-between items-center sticky top-0 z-50 shadow-lg">
         <Link href="/inbox" className="text-blue-400 hover:text-blue-300 flex items-center gap-2">← Back</Link>
-        
         <div className="flex items-center gap-4">
           <Link href={`/profile/${otherUserId}`} className="flex items-center gap-3 relative group cursor-pointer">
             <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden border border-gray-600 group-hover:ring-2 ring-blue-500/50 transition">
@@ -623,60 +497,6 @@ export default function ChatRoomPage() {
           </button>
         )}
       </div>
-
-      {/* 🔥 CALLING OVERLAYS */}
-      {callStatus === 'calling' && (
-        <div className="fixed inset-0 z-[100] bg-gray-950 flex flex-col items-center justify-center text-white animate-in fade-in duration-300">
-          <div className="w-24 h-24 rounded-full bg-gray-800 flex items-center justify-center mb-6 animate-pulse border-4 border-blue-500/30">
-            {otherUser?.avatar_url ? <img src={otherUser.avatar_url} className="w-full h-full rounded-full object-cover" /> : <span className="text-3xl font-bold">{otherUser?.full_name?.charAt(0) || "U"}</span>}
-          </div>
-          <h2 className="text-2xl font-bold mb-2">{otherUser?.full_name || "User"}</h2>
-          <p className="text-gray-400 mb-12">{callType === 'audio' ? 'Voice calling...' : 'Video calling...'}</p>
-          <button onClick={handleEndCall} className="w-16 h-16 rounded-full bg-red-600 flex items-center justify-center hover:bg-red-500 transition shadow-lg shadow-red-900/50">
-            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" /></svg>
-          </button>
-        </div>
-      )}
-
-      {callStatus === 'incoming' && (
-        <div className="fixed inset-0 z-[100] bg-gray-950 flex flex-col items-center justify-center text-white animate-in zoom-in-95 duration-300">
-          <div className="w-24 h-24 rounded-full bg-gray-800 flex items-center justify-center mb-6 animate-bounce border-4 border-green-500/30">
-            {otherUser?.avatar_url ? <img src={otherUser.avatar_url} className="w-full h-full rounded-full object-cover" /> : <span className="text-3xl font-bold">{otherUser?.full_name?.charAt(0) || "U"}</span>}
-          </div>
-          <h2 className="text-2xl font-bold mb-2">{otherUser?.full_name || "User"}</h2>
-          <p className="text-gray-400 mb-12">Incoming {callType === 'audio' ? 'Voice' : 'Video'} Call...</p>
-          <div className="flex gap-8">
-            <button onClick={handleDeclineCall} className="w-16 h-16 rounded-full bg-red-600 flex items-center justify-center hover:bg-red-500 transition shadow-lg shadow-red-900/50">
-              <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" /></svg>
-            </button>
-            <button onClick={handleAcceptCall} className="w-16 h-16 rounded-full bg-green-600 flex items-center justify-center hover:bg-green-500 transition shadow-lg shadow-green-900/50">
-              <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {callStatus === 'connected' && (
-        <div className={`fixed inset-0 z-[100] ${callType === 'video' ? 'bg-gray-900' : 'bg-gray-950'} flex flex-col items-center justify-center text-white animate-in fade-in duration-300`}>
-          {callType === 'video' && (
-             <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
-                <span className="text-6xl opacity-20">📹</span>
-                <p className="absolute bottom-10 text-gray-400 text-sm bg-black/50 px-4 py-2 rounded-full backdrop-blur-md">Video stream placeholder</p>
-             </div>
-          )}
-          <div className={`relative z-10 w-24 h-24 rounded-full bg-gray-800 flex items-center justify-center mb-6 border-4 border-green-500 ${callType === 'video' ? 'w-32 h-32' : ''}`}>
-             {otherUser?.avatar_url ? <img src={otherUser.avatar_url} className="w-full h-full rounded-full object-cover" /> : <span className="text-3xl font-bold">{otherUser?.full_name?.charAt(0) || "U"}</span>}
-          </div>
-          <h2 className="text-2xl font-bold mb-2 relative z-10">{otherUser?.full_name || "User"}</h2>
-          <p className="text-green-400 mb-12 relative z-10 font-mono text-lg">
-            {Math.floor(callDuration / 60)}:{(callDuration % 60).toString().padStart(2, '0')}
-          </p>
-          <button onClick={handleEndCall} className="relative z-10 w-16 h-16 rounded-full bg-red-600 flex items-center justify-center hover:bg-red-500 transition shadow-lg shadow-red-900/50">
-            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" /></svg>
-          </button>
-        </div>
-      )}
-
     </main>
   );
 }
