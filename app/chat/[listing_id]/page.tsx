@@ -5,43 +5,46 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
 
-const EMOJI_OPTIONS = ["❤️", "👍", "😂", "😮", "😢", "🙏", "🔥", "👎"];
+const EMOJI_OPTIONS = ["❤️", "👍", "😂", "😮", "😢", "🙏", "🔥", ""];
 
-// 🔥 NEW: Custom hook for Long Press (Mobile) and Right Click (Desktop)
-const useLongPress = (callback: (e: any) => void, onClick: (e: any) => void, ms = 500) => {
+// 🔥 Custom hook for Long Press (Mobile) and Right Click (Desktop)
+const useLongPress = (
+  onLongPress: (e: any) => void,
+  onClick: (e: any) => void,
+  ms = 500
+) => {
+  const [startLongPress, setStartLongPress] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const isLongPress = useRef(false);
-  
-  const start = (e: any) => {
-    isLongPress.current = false;
-    timerRef.current = setTimeout(() => {
-      isLongPress.current = true;
-      callback(e);
-    }, ms);
-  };
-  
-  const clear = () => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-  };
 
-  const handleClick = (e: any) => {
-    if (isLongPress.current) {
-      isLongPress.current = false;
-      e.stopPropagation();
-      return;
+  useEffect(() => {
+    if (startLongPress) {
+      timerRef.current = setTimeout(() => {
+        onLongPress({ preventDefault: () => {} });
+      }, ms);
     }
-    onClick(e);
-  };
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [startLongPress, onLongPress, ms]);
 
   return {
-    onTouchStart: start,
-    onTouchEnd: clear,
-    onTouchMove: clear,
-    onMouseDown: start,
-    onMouseUp: clear,
-    onMouseLeave: clear,
-    onContextMenu: (e: any) => { e.preventDefault(); callback(e); },
-    onClick: handleClick
+    onTouchStart: () => setStartLongPress(true),
+    onTouchEnd: () => {
+      setStartLongPress(false);
+      onClick({ stopPropagation: () => {} });
+    },
+    onTouchMove: () => setStartLongPress(false),
+    onMouseDown: () => setStartLongPress(true),
+    onMouseUp: () => {
+      setStartLongPress(false);
+      onClick({ stopPropagation: () => {} });
+    },
+    onMouseLeave: () => setStartLongPress(false),
+    onContextMenu: (e: any) => {
+      e.preventDefault();
+      onLongPress(e);
+    },
+    onClick: onClick,
   };
 };
 
@@ -50,32 +53,36 @@ export default function ChatRoomPage() {
   const searchParams = useSearchParams();
   const otherUserId = searchParams.get("user");
   const router = useRouter();
-  
+
   const [messages, setMessages] = useState<any[]>([]);
   const [otherUser, setOtherUser] = useState<any>(null);
   const [newMessage, setNewMessage] = useState("");
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  
+
   const [listingDetails, setListingDetails] = useState<any>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
-  
+
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
-  const [activeReactionMenu, setActiveReactionMenu] = useState<string | null>(null);
-  
+  const [activeReactionMenu, setActiveReactionMenu] = useState<string | null>(
+    null
+  );
+
   const [disappearingEnabled, setDisappearingEnabled] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
-  const [activeMessageMenu, setActiveMessageMenu] = useState<string | null>(null);
-  
+  const [activeMessageMenu, setActiveMessageMenu] = useState<string | null>(
+    null
+  );
+
   const [replyTo, setReplyTo] = useState<any>(null);
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -89,7 +96,7 @@ export default function ChatRoomPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/login"); return; }
       setCurrentUser(session.user);
-      
+
       await supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", session.user.id);
 
       if (otherUserId) {
@@ -106,7 +113,7 @@ export default function ChatRoomPage() {
         .select("product_name, title, name, price, image_url, image")
         .eq("id", listing_id)
         .single();
-      
+
       if (listing) {
         setListingDetails({
           displayName: listing.product_name || listing.title || listing.name || "Item",
@@ -120,20 +127,20 @@ export default function ChatRoomPage() {
         .select("*")
         .eq("listing_id", listing_id)
         .order("created_at", { ascending: true });
-      
+
       if (data) {
-        const filtered = data.filter(m => 
+        const filtered = data.filter(m =>
           (m.sender_id === session.user.id && m.receiver_id === otherUserId) ||
           (m.sender_id === otherUserId && m.receiver_id === session.user.id)
         );
-        
+
         const mappedMessages = filtered.map(m => ({ ...m, tempId: m.id }));
         setMessages(mappedMessages);
 
         const unreadMessageIds = filtered
           .filter(m => m.receiver_id === session.user.id && !m.is_read)
           .map(m => m.id);
-          
+
         if (unreadMessageIds.length > 0) {
           await supabase.from("messages").update({ is_read: true }).in("id", unreadMessageIds);
         }
@@ -203,7 +210,7 @@ export default function ChatRoomPage() {
     const newReactions = { ...currentReactions };
     if (newReactions[currentUser.id] === emoji) delete newReactions[currentUser.id];
     else newReactions[currentUser.id] = emoji;
-    
+
     await supabase.from("messages").update({ reactions: newReactions }).eq("id", messageId);
     setActiveReactionMenu(null);
   };
@@ -242,8 +249,8 @@ export default function ChatRoomPage() {
     const isVideo = file.type.startsWith('video/');
     const disappearsAt = disappearingEnabled ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
     const replyData = replyTo ? { id: replyTo.id, content: replyTo.content, sender_name: replyTo.sender_name } : null;
-    
-    setMessages((prev) => [...prev, { tempId, listing_id, sender_id: currentUser.id, receiver_id: otherUserId, content: isVideo ? "🎥 Video" : "📷 Photo", media_url: "loading", media_type: isVideo ? 'video' : 'image', is_read: false, created_at: new Date().toISOString(), disappears_at: disappearsAt, reply_to: replyData, isFailed: false }]);
+
+    setMessages((prev) => [...prev, { tempId, listing_id, sender_id: currentUser.id, receiver_id: otherUserId, content: isVideo ? " Video" : "📷 Photo", media_url: "loading", media_type: isVideo ? 'video' : 'image', is_read: false, created_at: new Date().toISOString(), disappears_at: disappearsAt, reply_to: replyData, isFailed: false }]);
 
     try {
       const fileExt = file.name.split('.').pop();
@@ -293,8 +300,8 @@ export default function ChatRoomPage() {
     const tempId = `temp-audio-${Date.now()}`;
     const disappearsAt = disappearingEnabled ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
     const replyData = replyTo ? { id: replyTo.id, content: replyTo.content, sender_name: replyTo.sender_name } : null;
-    
-    setMessages((prev) => [...prev, { tempId, listing_id, sender_id: currentUser.id, receiver_id: otherUserId, content: "🎤 Voice Message", audio_url: "loading", is_read: false, created_at: new Date().toISOString(), disappears_at: disappearsAt, reply_to: replyData, isFailed: false }]);
+
+    setMessages((prev) => [...prev, { tempId, listing_id, sender_id: currentUser.id, receiver_id: otherUserId, content: " Voice Message", audio_url: "loading", is_read: false, created_at: new Date().toISOString(), disappears_at: disappearsAt, reply_to: replyData, isFailed: false }]);
     try {
       const fileName = `${currentUser.id}-${Date.now()}.webm`;
       const { error: uploadError } = await supabase.storage.from("chat-audios").upload(fileName, audioBlob, { contentType: "audio/webm" });
@@ -314,10 +321,10 @@ export default function ChatRoomPage() {
     const contentToSend = retryMsg ? retryMsg.content : newMessage.trim();
     if (!contentToSend || !currentUser || !otherUserId || sending) return;
     setSending(true);
-    const tempId = retryMsg ? retryMsg.tempId : `temp-${Date.now()}`; 
+    const tempId = retryMsg ? retryMsg.tempId : `temp-${Date.now()}`;
     const disappearsAt = disappearingEnabled ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
     const replyData = replyTo ? { id: replyTo.id, content: replyTo.content, sender_name: replyTo.sender_name } : null;
-    
+
     if (!retryMsg) {
       setMessages((prev) => [...prev, { tempId, listing_id, sender_id: currentUser.id, receiver_id: otherUserId, content: contentToSend, is_read: false, created_at: new Date().toISOString(), disappears_at: disappearsAt, reply_to: replyData, isFailed: false }]);
       setNewMessage("");
@@ -329,7 +336,7 @@ export default function ChatRoomPage() {
       const { error } = await supabase.from("messages").insert({ listing_id, sender_id: currentUser.id, receiver_id: otherUserId, content: contentToSend, is_read: false, disappears_at: disappearsAt, reply_to: replyData });
       if (error) throw error;
       setMessages((prev) => prev.filter(m => m.tempId !== tempId));
-    } catch (error: any) { 
+    } catch (error: any) {
       toast.error("Failed to send. Tap to retry.");
       setMessages((prev) => prev.map(m => m.tempId === tempId ? {...m, isFailed: true} : m));
     } finally { setSending(false); }
@@ -352,7 +359,7 @@ export default function ChatRoomPage() {
       {/* PREMIUM HEADER WITH CALL BUTTONS & CLICKABLE PROFILE */}
       <nav className="border-b border-gray-800 bg-gray-950 p-3 flex justify-between items-center sticky top-0 z-50 shadow-lg">
         <Link href="/inbox" className="text-blue-400 hover:text-blue-300 flex items-center gap-2">← Back</Link>
-        
+
         <div className="flex items-center gap-4">
           <Link href={`/profile/${otherUserId}`} className="flex items-center gap-3 relative group cursor-pointer">
             <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden border border-gray-600 group-hover:ring-2 ring-blue-500/50 transition">
@@ -421,14 +428,14 @@ export default function ChatRoomPage() {
           const userReaction = msg.reactions?.[currentUser.id];
           const otherUserReaction = msg.reactions?.[otherUserId];
           const isEditing = editingMessageId === msg.id;
-          
+
           // 🔥 LONG PRESS HOOK FOR REACTIONS & TAP FOR REPLY
           const longPressProps = useLongPress(
-            (e) => {
+            (e: any) => {
               e.preventDefault();
               setActiveReactionMenu(msg.id);
             },
-            (e) => {
+            (e: any) => {
               if (!isEditing && activeReactionMenu !== msg.id && activeMessageMenu !== msg.id) {
                 setReplyTo({ id: msg.id, content: msg.content, sender_name: isMine ? 'You' : (otherUser?.full_name || 'User') });
               }
@@ -442,7 +449,7 @@ export default function ChatRoomPage() {
                   {otherUser?.avatar_url ? <img src={otherUser.avatar_url} alt="Profile" className="w-full h-full object-cover" /> : <span className="text-xs font-bold text-gray-300">{otherUser?.full_name?.charAt(0) || "U"}</span>}
                 </Link>
               )}
-              
+
               <div className={`max-w-[75%] ${isMine ? "items-end" : "items-start"} flex flex-col relative group`}>
                 {activeReactionMenu === msg.id && (
                   <div className={`reaction-menu absolute top-full ${isMine ? 'right-0' : 'left-0'} mt-1 bg-gray-800 border border-gray-700 rounded-full p-1.5 flex gap-1 shadow-xl z-20`}>
@@ -454,8 +461,8 @@ export default function ChatRoomPage() {
 
                 {/* 🔥 MENU BUTTON NOW SHOWS FOR ALL MESSAGES */}
                 {!isEditing && (
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); setActiveMessageMenu(activeMessageMenu === msg.id ? null : msg.id); }} 
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setActiveMessageMenu(activeMessageMenu === msg.id ? null : msg.id); }}
                         className={`message-menu absolute -top-2 ${isMine ? '-right-2' : '-left-2'} w-6 h-6 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-md border border-gray-600 z-10`}
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 text-white"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" /></svg>
@@ -465,16 +472,16 @@ export default function ChatRoomPage() {
                 {/* 🔥 MENU CONTENT: REPLY FOR EVERYONE, EDIT/DELETE ONLY FOR OWNER */}
                 {activeMessageMenu === msg.id && (
                     <div className={`message-menu absolute top-8 ${isMine ? 'right-0' : 'left-0'} bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20 overflow-hidden min-w-[140px]`}>
-                        <button 
-                          onClick={() => { 
-                            setReplyTo({ id: msg.id, content: msg.content, sender_name: isMine ? 'You' : (otherUser?.full_name || 'User') }); 
-                            setActiveMessageMenu(null); 
-                          }} 
+                        <button
+                          onClick={() => {
+                            setReplyTo({ id: msg.id, content: msg.content, sender_name: isMine ? 'You' : (otherUser?.full_name || 'User') });
+                            setActiveMessageMenu(null);
+                          }}
                           className="w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-700 flex items-center gap-2"
                         >
                           ↩️ Reply
                         </button>
-                        
+
                         {isMine && !msg.media_url && !msg.audio_url && (
                             <button onClick={() => { setEditingMessageId(msg.id); setEditText(msg.content); setActiveMessageMenu(null); }} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-700 flex items-center gap-2 border-t border-gray-700">✏️ Edit</button>
                         )}
@@ -485,7 +492,7 @@ export default function ChatRoomPage() {
                 )}
 
                 {/* 🔥 TAP TO REPLY (WhatsApp Style) + LONG PRESS SUPPORT */}
-                <div 
+                <div
                   {...longPressProps}
                   className={`px-4 py-2 rounded-2xl transition relative cursor-pointer ${isMine ? "bg-blue-600 rounded-br-none" : "bg-gray-800 rounded-bl-none"} ${msg.disappears_at ? 'border border-orange-500/30' : ''} active:scale-[0.98]`}
                 >
@@ -505,7 +512,7 @@ export default function ChatRoomPage() {
                           <p className="truncate opacity-90">{msg.reply_to.content}</p>
                         </div>
                       )}
-                      
+
                       {msg.disappears_at && <div className="absolute -top-3 right-0 text-[10px] text-orange-400 flex items-center gap-1 pointer-events-none"><span>🔥</span> Disappears</div>}
                       {msg.media_url && msg.media_url !== "loading" ? (
                         msg.media_type === 'image' ? <img src={msg.media_url} alt="Shared" className="max-w-full rounded-lg cursor-pointer pointer-events-auto" onClick={(e) => { e.stopPropagation(); window.open(msg.media_url, '_blank'); }} /> : <video controls src={msg.media_url} className="max-w-full rounded-lg max-h-[300px] pointer-events-auto" onClick={(e) => e.stopPropagation()} />
@@ -516,7 +523,7 @@ export default function ChatRoomPage() {
                     </>
                   )}
                 </div>
-                
+
                 {(userReaction || otherUserReaction) && (
                   <div className={`flex gap-1 mt-1 ${isMine ? 'self-end' : 'self-start'}`}>
                     {userReaction && <span className="bg-blue-600/20 border border-blue-500/30 text-xs px-2 py-0.5 rounded-full">{userReaction}</span>}
@@ -535,7 +542,7 @@ export default function ChatRoomPage() {
             </div>
           );
         })}
-        
+
         {isOtherUserTyping && (
           <div className="flex justify-start items-end gap-2">
             <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden border border-gray-600 flex-shrink-0 mb-1">
