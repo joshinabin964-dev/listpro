@@ -7,6 +7,26 @@ import toast from "react-hot-toast";
 
 const EMOJI_OPTIONS = ["❤️", "👍", "😂", "😮", "😢", "🙏", "🔥", "👎"];
 
+// 🔥 NEW: Custom hook for Long Press (Mobile) and Right Click (Desktop)
+const useLongPress = (callback: (e: any) => void, ms = 500) => {
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const start = (e: any) => {
+    timerRef.current = setTimeout(() => callback(e), ms);
+  };
+  const clear = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  };
+  return {
+    onTouchStart: start,
+    onTouchEnd: clear,
+    onTouchMove: clear,
+    onMouseDown: start,
+    onMouseUp: clear,
+    onMouseLeave: clear,
+    onContextMenu: (e: any) => { e.preventDefault(); callback(e); }
+  };
+};
+
 export default function ChatRoomPage() {
   const { listing_id } = useParams();
   const searchParams = useSearchParams();
@@ -35,8 +55,6 @@ export default function ChatRoomPage() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [activeMessageMenu, setActiveMessageMenu] = useState<string | null>(null);
-  
-  // 🔥 NEW: Reply State
   const [replyTo, setReplyTo] = useState<any>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -309,10 +327,10 @@ export default function ChatRoomPage() {
   const validMessages = messages.filter(msg => !msg.disappears_at || new Date(msg.disappears_at) > new Date());
 
   return (
-    <main className="flex flex-col h-screen bg-gray-950 text-white">
+    <main className="flex flex-col h-screen bg-gray-950 text-white select-none">
       <input type="file" ref={fileInputRef} onChange={handleMediaSelect} accept="image/*,video/*" className="hidden" />
 
-      {/* 🔥 PREMIUM HEADER WITH CALL BUTTONS & CLICKABLE PROFILE */}
+      {/* PREMIUM HEADER WITH CALL BUTTONS & CLICKABLE PROFILE */}
       <nav className="border-b border-gray-800 bg-gray-950 p-3 flex justify-between items-center sticky top-0 z-50 shadow-lg">
         <Link href="/inbox" className="text-blue-400 hover:text-blue-300 flex items-center gap-2">← Back</Link>
         
@@ -385,8 +403,13 @@ export default function ChatRoomPage() {
           const otherUserReaction = msg.reactions?.[otherUserId];
           const isEditing = editingMessageId === msg.id;
           
+          // 🔥 LONG PRESS HOOK FOR REACTIONS
+          const longPressProps = useLongPress((e) => {
+            e.preventDefault();
+            setActiveReactionMenu(msg.id);
+          });
+
           return (
-            // 🔥 PREMIUM: Added Avatar Next to Incoming Messages
             <div key={msg.id || msg.tempId} className={`flex ${isMine ? "justify-end" : "justify-start"} items-end gap-2`}>
               {!isMine && (
                 <Link href={`/profile/${otherUserId}`} className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden border border-gray-600 flex-shrink-0 mb-1 hover:opacity-80 transition">
@@ -403,23 +426,49 @@ export default function ChatRoomPage() {
                   </div>
                 )}
 
-                {isMine && !isEditing && (
-                    <button onClick={(e) => { e.stopPropagation(); setActiveMessageMenu(activeMessageMenu === msg.id ? null : msg.id); }} className="message-menu absolute -top-2 -right-2 w-6 h-6 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-md border border-gray-600 z-10">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 text-white"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" /></svg>
-                    </button>
-                )}
+                {/* 🔥 MENU BUTTON NOW SHOWS FOR ALL MESSAGES */}
+                <button 
+                    onClick={(e) => { e.stopPropagation(); setActiveMessageMenu(activeMessageMenu === msg.id ? null : msg.id); }}
+                    className="message-menu absolute -top-2 right-0 w-6 h-6 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-md border border-gray-600 z-10"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 text-white"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" /></svg>
+                </button>
 
-                {activeMessageMenu === msg.id && isMine && (
+                {activeMessageMenu === msg.id && (
                     <div className="message-menu absolute top-8 right-0 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20 overflow-hidden min-w-[140px]">
-                        {!msg.media_url && !msg.audio_url && <button onClick={() => { setEditingMessageId(msg.id); setEditText(msg.content); setActiveMessageMenu(null); }} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-700 flex items-center gap-2">✏️ Edit</button>}
-                        <button onClick={() => { setReplyTo({ id: msg.id, content: msg.content, sender_name: isMine ? 'You' : otherUser?.full_name }); setActiveMessageMenu(null); }} className="w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-700 flex items-center gap-2 border-t border-gray-700">↩️ Reply</button>
-                        <button onClick={() => handleDeleteMessage(msg.id)} className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-700 flex items-center gap-2 border-t border-gray-700">🗑️ Delete</button>
+                        {/* 🔥 REPLY IS NOW AVAILABLE FOR EVERYONE */}
+                        <button 
+                          onClick={() => { 
+                            setReplyTo({ id: msg.id, content: msg.content, sender_name: isMine ? 'You' : (otherUser?.full_name || 'User') }); 
+                            setActiveMessageMenu(null); 
+                          }} 
+                          className="w-full text-left px-4 py-2 text-sm text-blue-400 hover:bg-gray-700 flex items-center gap-2"
+                        >
+                          ↩️ Reply
+                        </button>
+                        
+                        {/* EDIT & DELETE ONLY FOR OWNER */}
+                        {isMine && !msg.media_url && !msg.audio_url && (
+                            <button onClick={() => { setEditingMessageId(msg.id); setEditText(msg.content); setActiveMessageMenu(null); }} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-700 flex items-center gap-2 border-t border-gray-700">✏️ Edit</button>
+                        )}
+                        {isMine && (
+                            <button onClick={() => handleDeleteMessage(msg.id)} className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-700 flex items-center gap-2 border-t border-gray-700">🗑️ Delete</button>
+                        )}
                     </div>
                 )}
 
-                <div className={`px-4 py-2 rounded-2xl transition relative ${isMine ? "bg-blue-600 rounded-br-none" : "bg-gray-800 rounded-bl-none"} ${msg.disappears_at ? 'border border-orange-500/30' : ''}`}>
+                <div 
+                  {...longPressProps}
+                  onClick={() => {
+                    // Tap to reply (WhatsApp style)
+                    if (!isEditing && activeReactionMenu !== msg.id && activeMessageMenu !== msg.id) {
+                      setReplyTo({ id: msg.id, content: msg.content, sender_name: isMine ? 'You' : (otherUser?.full_name || 'User') });
+                    }
+                  }}
+                  className={`px-4 py-2 rounded-2xl transition relative cursor-pointer ${isMine ? "bg-blue-600 rounded-br-none" : "bg-gray-800 rounded-bl-none"} ${msg.disappears_at ? 'border border-orange-500/30' : ''} active:scale-[0.98]`}
+                >
                   {isEditing ? (
-                    <div className="flex flex-col gap-2 min-w-[200px]">
+                    <div className="flex flex-col gap-2 min-w-[200px]" onClick={(e) => e.stopPropagation()}>
                         <input value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500" autoFocus />
                         <div className="flex gap-2 justify-end">
                             <button onClick={() => { setEditingMessageId(null); setEditText(""); }} className="text-xs text-gray-400 hover:text-white px-2 py-1">Cancel</button>
@@ -428,21 +477,20 @@ export default function ChatRoomPage() {
                     </div>
                   ) : (
                     <>
-                      {/* 🔥 PREMIUM: Quoted Reply UI */}
                       {msg.reply_to && (
-                        <div className="bg-black/20 border-l-2 border-blue-400 pl-2 mb-2 rounded text-xs text-gray-200">
+                        <div className="bg-black/20 border-l-2 border-blue-400 pl-2 mb-2 rounded text-xs text-gray-200 pointer-events-none">
                           <p className="font-bold text-blue-300 text-[10px]">{msg.reply_to.sender_name}</p>
                           <p className="truncate opacity-90">{msg.reply_to.content}</p>
                         </div>
                       )}
                       
-                      {msg.disappears_at && <div className="absolute -top-3 right-0 text-[10px] text-orange-400 flex items-center gap-1"><span>🔥</span> Disappears</div>}
+                      {msg.disappears_at && <div className="absolute -top-3 right-0 text-[10px] text-orange-400 flex items-center gap-1 pointer-events-none"><span>🔥</span> Disappears</div>}
                       {msg.media_url && msg.media_url !== "loading" ? (
-                        msg.media_type === 'image' ? <img src={msg.media_url} alt="Shared" className="max-w-full rounded-lg cursor-pointer" onClick={() => window.open(msg.media_url, '_blank')} /> : <video controls src={msg.media_url} className="max-w-full rounded-lg max-h-[300px]" />
-                      ) : msg.media_url === "loading" ? <div className="flex items-center gap-2 text-sm"><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Uploading...</div>
-                      : msg.audio_url && msg.audio_url !== "loading" ? <audio controls src={msg.audio_url} className="max-w-[200px] h-8" />
-                      : msg.audio_url === "loading" ? <div className="flex items-center gap-2 text-sm"><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Sending voice...</div>
-                      : <p className="text-sm break-words">{msg.content}</p>}
+                        msg.media_type === 'image' ? <img src={msg.media_url} alt="Shared" className="max-w-full rounded-lg cursor-pointer pointer-events-auto" onClick={(e) => { e.stopPropagation(); window.open(msg.media_url, '_blank'); }} /> : <video controls src={msg.media_url} className="max-w-full rounded-lg max-h-[300px] pointer-events-auto" onClick={(e) => e.stopPropagation()} />
+                      ) : msg.media_url === "loading" ? <div className="flex items-center gap-2 text-sm pointer-events-none"><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Uploading...</div>
+                      : msg.audio_url && msg.audio_url !== "loading" ? <audio controls src={msg.audio_url} className="max-w-[200px] h-8 pointer-events-auto" onClick={(e) => e.stopPropagation()} />
+                      : msg.audio_url === "loading" ? <div className="flex items-center gap-2 text-sm pointer-events-none"><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Sending voice...</div>
+                      : <p className="text-sm break-words pointer-events-none">{msg.content}</p>}
                     </>
                   )}
                 </div>
@@ -484,7 +532,7 @@ export default function ChatRoomPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 🔥 PREMIUM: Reply Bar Above Input */}
+      {/* PREMIUM: Reply Bar Above Input */}
       {replyTo && (
         <div className="bg-gray-900 border-l-4 border-blue-500 p-3 mx-3 mb-2 rounded-r-lg flex justify-between items-center animate-in fade-in slide-in-from-bottom-2">
           <div className="flex-1 min-w-0">
