@@ -18,7 +18,11 @@ export default function GlobalCallListener() {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [peer, setPeer] = useState<Peer | null>(null);
   const [callConnection, setCallConnection] = useState<MediaConnection | null>(null);
+  
+  // 🔥 NEW STATES FOR FEATURES
   const [isMuted, setIsMuted] = useState(false);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
 
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -46,12 +50,15 @@ export default function GlobalCallListener() {
     };
   }, []);
 
-  // 2. Request Camera IMMEDIATELY when call starts (Crucial for Full Screen Video)
+  // 2. Request Camera IMMEDIATELY
   useEffect(() => {
-    if ((callStatus === 'calling' || callStatus === 'connected' || callStatus === 'incoming') && callType === 'video' && !localStream) {
+    if ((callStatus === 'calling' || callStatus === 'connected' || callStatus === 'incoming') && callType === 'video' && !localStream && !isScreenSharing) {
       const getCamera = async () => {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: facingMode }, 
+            audio: true 
+          });
           setLocalStream(stream);
         } catch (err) {
           console.error("Camera access failed", err);
@@ -59,7 +66,7 @@ export default function GlobalCallListener() {
       };
       getCamera();
     }
-  }, [callStatus, callType, localStream]);
+  }, [callStatus, callType, localStream, isScreenSharing, facingMode]);
 
   // 3. Handle Video Elements
   useEffect(() => {
@@ -78,6 +85,7 @@ export default function GlobalCallListener() {
       if (localStream) {
         call.answer(localStream);
         call.on('stream', (userStream) => setRemoteStream(userStream));
+        setCallConnection(call);
       }
     });
 
@@ -130,6 +138,7 @@ export default function GlobalCallListener() {
     setCallDuration(0);
     setCallData(null);
     setRemoteStream(null);
+    setIsScreenSharing(false);
     if (callConnection) callConnection.close();
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
@@ -165,10 +174,74 @@ export default function GlobalCallListener() {
     resetCallState();
   };
 
+  // 🔥 FEATURE: Toggle Mute
   const toggleMute = () => {
     if (localStream) {
       localStream.getAudioTracks().forEach(track => track.enabled = !track.enabled);
       setIsMuted(!isMuted);
+    }
+  };
+
+  // 🔥 FEATURE: Flip Camera (Front/Back)
+  const flipCamera = async () => {
+    if (!localStream || isScreenSharing) return;
+    const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: newFacingMode },
+        audio: false // Keep audio from existing stream
+      });
+      
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      const oldVideoTrack = localStream.getVideoTracks()[0];
+
+      // Replace track in PeerJS connection for smooth transition
+      if (callConnection) {
+        // @ts-ignore - peerConnection is available in PeerJS
+        const senders = callConnection.peerConnection.getSenders();
+        const videoSender = senders.find((s: any) => s.track && s.track.kind === 'video');
+        if (videoSender) videoSender.replaceTrack(newVideoTrack);
+      }
+
+      const audioTracks = localStream.getAudioTracks();
+      const combinedStream = new MediaStream([newVideoTrack, ...audioTracks]);
+      setLocalStream(combinedStream);
+      setFacingMode(newFacingMode);
+      oldVideoTrack.stop();
+    } catch (err) {
+      toast.error("Could not flip camera");
+    }
+  };
+
+  // 🔥 FEATURE: Screen Share (Marketplace Superpower)
+  const toggleScreenShare = async () => {
+    if (!localStream) return;
+    try {
+      if (!isScreenSharing) {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const screenTrack = screenStream.getVideoTracks()[0];
+        
+        if (callConnection) {
+          // @ts-ignore
+          const senders = callConnection.peerConnection.getSenders();
+          const videoSender = senders.find((s: any) => s.track && s.track.kind === 'video');
+          if (videoSender) videoSender.replaceTrack(screenTrack);
+        }
+
+        screenTrack.onended = () => {
+          setIsScreenSharing(false);
+          flipCamera(); // Revert to camera when user stops sharing via browser UI
+        };
+
+        const audioTracks = localStream.getAudioTracks();
+        setLocalStream(new MediaStream([screenTrack, ...audioTracks]));
+        setIsScreenSharing(true);
+      } else {
+        setIsScreenSharing(false);
+        flipCamera(); // Revert to camera
+      }
+    } catch (err) {
+      toast.error("Screen share failed or cancelled");
     }
   };
 
@@ -186,29 +259,28 @@ export default function GlobalCallListener() {
 
   if (callStatus === "idle" || !currentUser) return null;
 
-  // 🎨 THE SNAPCHAT-STYLE 1000/1000 UI
+  // 🎨 THE ULTIMATE UI
   return (
     <div className="fixed inset-0 z-[100] bg-black text-white overflow-hidden font-sans">
       
-      {/* 📹 FULL SCREEN LOCAL CAMERA (The Background) */}
+      {/* 📹 FULL SCREEN LOCAL CAMERA */}
       {callType === "video" && localStream ? (
         <video 
           ref={localVideoRef} 
           autoPlay muted playsInline 
           className="absolute inset-0 w-full h-full object-cover"
-          style={{ transform: 'scaleX(-1)' }} // Mirror effect for selfie cam
+          style={{ transform: isScreenSharing ? 'none' : 'scaleX(-1)' }} 
         />
       ) : (
-        /* Fallback for Audio Calls or Waiting for Camera */
         <div className="absolute inset-0 bg-gradient-to-b from-gray-900 via-[#0a0a0a] to-black flex items-center justify-center">
            {otherUserAvatar && <img src={otherUserAvatar} className="absolute inset-0 w-full h-full object-cover blur-3xl opacity-20 scale-125" />}
         </div>
       )}
 
-      {/* 🌫️ GRADIENT OVERLAYS (So text is readable) */}
+      {/* 🌫️ GRADIENT OVERLAYS */}
       <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 z-10 pointer-events-none" />
 
-      {/* 📱 TOP BAR (Minimize, Name, More) */}
+      {/* 📱 TOP BAR */}
       <div className="absolute top-0 w-full p-6 flex justify-between items-start z-20">
         <button className="p-2 rounded-full bg-white/10 backdrop-blur-md hover:bg-white/20 transition">
           <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
@@ -250,14 +322,17 @@ export default function GlobalCallListener() {
         </div>
       )}
 
-      {/* 🎛️ BOTTOM CONTROL BAR (Snapchat Style) */}
+      {/* 🎛️ BOTTOM CONTROL BAR */}
       <div className="absolute bottom-0 w-full p-8 z-20 flex flex-col items-center gap-6">
         
-        {/* Snapchat-style Pills */}
-        {callType === "video" && (
+        {/* Feature Pills */}
+        {callType === "video" && callStatus === "connected" && (
           <div className="flex gap-3 overflow-x-auto w-full justify-center pb-2">
-            <button className="bg-white/20 backdrop-blur-xl border border-white/10 px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 hover:bg-white/30 transition">
-              <span>✨</span> Touch up
+            <button 
+              onClick={toggleScreenShare}
+              className={`backdrop-blur-xl border px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 transition ${isScreenSharing ? 'bg-blue-500/40 border-blue-400' : 'bg-white/20 border-white/10 hover:bg-white/30'}`}
+            >
+              <span>🖥️</span> {isScreenSharing ? 'Stop Share' : 'Share Screen'}
             </button>
             <button className="bg-white/20 backdrop-blur-xl border border-white/10 px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 hover:bg-white/30 transition">
               <span>💨</span> Blur
@@ -289,13 +364,17 @@ export default function GlobalCallListener() {
           ) : (
             <>
               {/* Flip Camera */}
-              <button className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center hover:bg-white/30 transition">
+              <button onClick={flipCamera} className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center hover:bg-white/30 transition">
                 <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
               </button>
               
               {/* Mute Mic */}
-              <button onClick={toggleMute} className={`w-12 h-12 rounded-full flex items-center justify-center transition ${isMuted ? 'bg-red-500' : 'bg-white/20 backdrop-blur-md hover:bg-white/30'}`}>
-                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+              <button onClick={toggleMute} className={`w-12 h-12 rounded-full flex items-center justify-center transition ${isMuted ? 'bg-red-500 shadow-lg shadow-red-500/50' : 'bg-white/20 backdrop-blur-md hover:bg-white/30'}`}>
+                {isMuted ? (
+                   <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>
+                ) : (
+                   <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                )}
               </button>
 
               {/* End Call */}
