@@ -37,7 +37,7 @@ export default function ChatRoomPage() {
   const [activeMessageMenu, setActiveMessageMenu] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<any>(null);
   
-  // 🔥 NEW: Calling States
+  // 🔥 CALLING STATES
   const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'incoming' | 'connected'>('idle');
   const [callType, setCallType] = useState<'audio' | 'video' | null>(null);
   const [callDuration, setCallDuration] = useState(0);
@@ -136,37 +136,50 @@ export default function ChatRoomPage() {
       .on("broadcast", { event: "typing" }, (payload) => {
         if (payload.user_id === otherUserId) setIsOtherUserTyping(payload.is_typing);
       })
-      // 🔥 NEW: Listen for incoming calls
+      // 🔥 LISTEN FOR CALLS
       .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `listing_id=eq.${listing_id}` }, (payload) => {
-        const call = payload.new;
+        const call = payload.new || payload.old;
+        if (!call) return;
+
         if (payload.eventType === 'INSERT') {
           if (call.receiver_id === currentUser.id && call.status === 'ringing') {
             setCallType(call.type);
             setCallStatus('incoming');
+            toast.success(`Incoming ${call.type} call from ${otherUser?.full_name || 'User'}!`);
           }
         } else if (payload.eventType === 'UPDATE') {
           if (call.caller_id === currentUser.id || call.receiver_id === currentUser.id) {
             if (call.status === 'accepted') {
               setCallStatus('connected');
-              callTimerRef.current = setInterval(() => {
-                setCallDuration(prev => prev + 1);
-              }, 1000);
+              if (!callTimerRef.current) {
+                callTimerRef.current = setInterval(() => {
+                  setCallDuration(prev => prev + 1);
+                }, 1000);
+              }
             } else if (call.status === 'rejected' || call.status === 'ended') {
               setCallStatus('idle');
               setCallDuration(0);
-              if (callTimerRef.current) clearInterval(callTimerRef.current);
+              if (callTimerRef.current) {
+                clearInterval(callTimerRef.current);
+                callTimerRef.current = null;
+              }
+              if (call.status === 'rejected') toast.info("Call was declined.");
+              else toast.info("Call ended.");
             }
           }
         } else if (payload.eventType === 'DELETE') {
           setCallStatus('idle');
           setCallDuration(0);
-          if (callTimerRef.current) clearInterval(callTimerRef.current);
+          if (callTimerRef.current) {
+            clearInterval(callTimerRef.current);
+            callTimerRef.current = null;
+          }
         }
       })
       .subscribe();
       
     return () => { supabase.removeChannel(channel); };
-  }, [currentUser, listing_id, otherUserId]);
+  }, [currentUser, listing_id, otherUserId, otherUser?.full_name]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -219,10 +232,12 @@ export default function ChatRoomPage() {
     toast.success("Message deleted for everyone");
   };
 
-  // 🔥 NEW: Call Functions
+  // 🔥 CALL FUNCTIONS
   const startCall = async (type: 'audio' | 'video') => {
     setCallType(type);
     setCallStatus('calling');
+    const loadingToast = toast.loading(`Initiating ${type} call...`);
+    
     const { error } = await supabase.from('calls').insert({
       caller_id: currentUser.id,
       receiver_id: otherUserId,
@@ -230,9 +245,13 @@ export default function ChatRoomPage() {
       type,
       status: 'ringing'
     });
+    
+    toast.dismiss(loadingToast);
     if (error) {
       toast.error("Failed to start call");
       setCallStatus('idle');
+    } else {
+      toast.success("Calling...");
     }
   };
 
@@ -246,9 +265,12 @@ export default function ChatRoomPage() {
     
     if (!error) {
       setCallStatus('connected');
-      callTimerRef.current = setInterval(() => {
-        setCallDuration(prev => prev + 1);
-      }, 1000);
+      if (!callTimerRef.current) {
+        callTimerRef.current = setInterval(() => {
+          setCallDuration(prev => prev + 1);
+        }, 1000);
+      }
+      toast.success("Call connected!");
     }
   };
 
@@ -263,15 +285,20 @@ export default function ChatRoomPage() {
   };
 
   const handleEndCall = async () => {
+    // 🔥 FIX: Use .neq instead of .in for bulletproof real-time updates
     await supabase
       .from('calls')
       .update({ status: 'ended' })
       .eq('listing_id', listing_id)
-      .in('status', ['ringing', 'accepted']);
+      .neq('status', 'ended');
     
     setCallStatus('idle');
     setCallDuration(0);
-    if (callTimerRef.current) clearInterval(callTimerRef.current);
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
+    toast.info("Call ended.");
   };
 
   const handleMediaSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -409,7 +436,6 @@ export default function ChatRoomPage() {
           </Link>
 
           <div className="flex items-center gap-1">
-            {/* 🔥 ACTIVE CALL BUTTONS */}
             <button onClick={() => startCall('audio')} className="p-2 hover:bg-gray-800 rounded-full transition text-gray-400 hover:text-green-400" title="Voice Call">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" /></svg>
             </button>
@@ -598,7 +624,7 @@ export default function ChatRoomPage() {
         )}
       </div>
 
-      {/* 🔥 NEW: CALLING OVERLAYS */}
+      {/* 🔥 CALLING OVERLAYS */}
       {callStatus === 'calling' && (
         <div className="fixed inset-0 z-[100] bg-gray-950 flex flex-col items-center justify-center text-white animate-in fade-in duration-300">
           <div className="w-24 h-24 rounded-full bg-gray-800 flex items-center justify-center mb-6 animate-pulse border-4 border-blue-500/30">
