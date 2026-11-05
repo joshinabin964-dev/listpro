@@ -55,6 +55,7 @@ export default function ChatRoomPage() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [activeMessageMenu, setActiveMessageMenu] = useState<string | null>(null);
+  
   const [replyTo, setReplyTo] = useState<any>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -427,16 +428,18 @@ export default function ChatRoomPage() {
                 )}
 
                 {/* 🔥 MENU BUTTON NOW SHOWS FOR ALL MESSAGES */}
-                <button 
-                    onClick={(e) => { e.stopPropagation(); setActiveMessageMenu(activeMessageMenu === msg.id ? null : msg.id); }}
-                    className="message-menu absolute -top-2 right-0 w-6 h-6 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-md border border-gray-600 z-10"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 text-white"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" /></svg>
-                </button>
+                {!isEditing && (
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); setActiveMessageMenu(activeMessageMenu === msg.id ? null : msg.id); }} 
+                        className={`message-menu absolute -top-2 ${isMine ? '-right-2' : '-left-2'} w-6 h-6 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-md border border-gray-600 z-10`}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 text-white"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" /></svg>
+                    </button>
+                )}
 
+                {/* 🔥 MENU CONTENT: REPLY FOR EVERYONE, EDIT/DELETE ONLY FOR OWNER */}
                 {activeMessageMenu === msg.id && (
-                    <div className="message-menu absolute top-8 right-0 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20 overflow-hidden min-w-[140px]">
-                        {/* 🔥 REPLY IS NOW AVAILABLE FOR EVERYONE */}
+                    <div className={`message-menu absolute top-8 ${isMine ? 'right-0' : 'left-0'} bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20 overflow-hidden min-w-[140px]`}>
                         <button 
                           onClick={() => { 
                             setReplyTo({ id: msg.id, content: msg.content, sender_name: isMine ? 'You' : (otherUser?.full_name || 'User') }); 
@@ -447,7 +450,6 @@ export default function ChatRoomPage() {
                           ↩️ Reply
                         </button>
                         
-                        {/* EDIT & DELETE ONLY FOR OWNER */}
                         {isMine && !msg.media_url && !msg.audio_url && (
                             <button onClick={() => { setEditingMessageId(msg.id); setEditText(msg.content); setActiveMessageMenu(null); }} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-700 flex items-center gap-2 border-t border-gray-700">✏️ Edit</button>
                         )}
@@ -457,10 +459,10 @@ export default function ChatRoomPage() {
                     </div>
                 )}
 
+                {/* 🔥 TAP TO REPLY (WhatsApp Style) + LONG PRESS SUPPORT */}
                 <div 
                   {...longPressProps}
                   onClick={() => {
-                    // Tap to reply (WhatsApp style)
                     if (!isEditing && activeReactionMenu !== msg.id && activeMessageMenu !== msg.id) {
                       setReplyTo({ id: msg.id, content: msg.content, sender_name: isMine ? 'You' : (otherUser?.full_name || 'User') });
                     }
