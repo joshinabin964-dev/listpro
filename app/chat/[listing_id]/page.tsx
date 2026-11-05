@@ -161,37 +161,20 @@ export default function ChatRoomPage() {
     toast.success("Message deleted for everyone");
   };
 
-  // 🔥 PREMIUM CALL TRIGGER (Requests Camera/Mic immediately)
+  // 🔥 SIMPLIFIED CALL TRIGGER (Let Global Listener handle the camera)
   const startCall = async (type: 'audio' | 'video') => {
-    const loadingToast = toast.loading(`Requesting ${type} permissions...`);
+    const loadingToast = toast.loading(`Starting ${type} call...`);
     
-    try {
-      // 1. Request Camera/Mic Permissions immediately
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: true, 
-        video: type === 'video' 
-      });
-      
-      // 2. Insert into Database to trigger Global Listener
-      const { error } = await supabase.from('calls').insert({
-        caller_id: currentUser.id,
-        receiver_id: otherUserId,
-        listing_id,
-        type,
-        status: 'ringing'
-      });
-      
-      toast.dismiss(loadingToast);
-      if (error) {
-        toast.error("Failed to start call");
-        stream.getTracks().forEach(track => track.stop()); // Stop camera if failed
-      } else {
-        toast.success("Calling...");
-      }
-    } catch (err) {
-      toast.dismiss(loadingToast);
-      toast.error("Camera/Mic access denied. Please allow permissions.");
-    }
+    const { error } = await supabase.from('calls').insert({
+      caller_id: currentUser.id,
+      receiver_id: otherUserId,
+      listing_id,
+      type,
+      status: 'ringing'
+    });
+    
+    toast.dismiss(loadingToast);
+    if (error) toast.error("Failed to start call");
   };
 
   const handleMediaSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
