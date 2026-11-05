@@ -11,58 +11,68 @@ export default function GlobalCallListener() {
   const [callDuration, setCallDuration] = useState(0);
   const [callData, setCallData] = useState<any>(null);
   const [otherUserName, setOtherUserName] = useState("User");
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const router = useRouter();
 
+  // Handle Auth
   useEffect(() => {
     const getUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        console.log("✅ GlobalCallListener: User authenticated:", session.user.id);
-        setCurrentUser(session.user);
-      } else {
-        console.log("⚠️ GlobalCallListener: No user session");
-      }
+      if (session) setCurrentUser(session.user);
     };
     getUser();
-
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       setCurrentUser(session?.user || null);
     });
-
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
+    return () => { authListener.subscription.unsubscribe(); };
   }, []);
 
+  // Handle Camera Stream
   useEffect(() => {
-    if (!currentUser) {
-      console.log("⏳ GlobalCallListener: Waiting for user to load...");
-      return;
+    if (videoRef.current && localStream) {
+      videoRef.current.srcObject = localStream;
     }
+  }, [localStream]);
 
-    console.log("📡 GlobalCallListener: Subscribing to calls for receiver_id =", currentUser.id);
+  // Listen for Calls
+  useEffect(() => {
+    if (!currentUser) return;
 
     const channel = supabase.channel(`global-calls-${currentUser.id}`)
-      // Listen for calls RECEIVED by the current user
       .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `receiver_id=eq.${currentUser.id}` }, (payload) => {
-        console.log("🔔 CALL EVENT TRIGGERED!", payload);
         const call = payload.new || payload.old;
         if (!call) return;
 
         if (payload.eventType === "INSERT" && call.status === "ringing") {
-          console.log("✅ MATCH! Setting state to incoming");
           setCallData(call);
           setCallType(call.type);
           setCallStatus("incoming");
-          toast.success(`📞 Incoming ${call.type} call!`);
         } else if (payload.eventType === "UPDATE") {
           if (call.status === "accepted") {
             setCallStatus("connected");
-            if (!callTimerRef.current) {
-              callTimerRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
-            }
-            toast.success("Call connected!");
+            if (!callTimerRef.current) callTimerRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
+          } else if (call.status === "rejected" || call.status === "ended") {
+            resetCallState();
+          }
+        } else if (payload.eventType === "DELETE") {
+          resetCallState();
+        }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls", filter: `caller_id=eq.${currentUser.id}` }, (payload) => {
+        const call = payload.new || payload.old;
+        if (!call) return;
+
+        if (payload.eventType === "INSERT" && call.status === "ringing") {
+          setCallData(call);
+          setCallType(call.type);
+          setCallStatus("calling");
+        } else if (payload.eventType === "UPDATE") {
+          if (call.status === "accepted") {
+            setCallStatus("connected");
+            if (!callTimerRef.current) callTimerRef.current = setInterval(() => setCallDuration(prev => prev + 1), 1000);
           } else if (call.status === "rejected" || call.status === "ended") {
             resetCallState();
             toast.info(call.status === "rejected" ? "Call was declined." : "Call ended.");
@@ -71,20 +81,19 @@ export default function GlobalCallListener() {
           resetCallState();
         }
       })
-      .subscribe((status) => {
-        console.log("📡 Subscription Status:", status);
-      });
+      .subscribe();
 
-    return () => { 
-      console.log("🛑 GlobalCallListener: Unsubscribing");
-      supabase.removeChannel(channel); 
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [currentUser]);
 
   const resetCallState = () => {
     setCallStatus("idle");
     setCallDuration(0);
     setCallData(null);
+    if (localStream) {
+      localStream.getTracks().forEach(track => track.stop());
+      setLocalStream(null);
+    }
     if (callTimerRef.current) {
       clearInterval(callTimerRef.current);
       callTimerRef.current = null;
@@ -93,35 +102,35 @@ export default function GlobalCallListener() {
 
   const handleAcceptCall = async () => {
     if (!callData) return;
-    console.log("📞 Accepting call:", callData.id);
-    const { error } = await supabase.from("calls").update({ status: "accepted" }).eq("id", callData.id);
-    if (!error) {
-      router.push(`/chat/${callData.listing_id}?user=${callData.caller_id}`);
-    } else {
-      console.error("Failed to accept call:", error);
+    // Request camera/mic on accept
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: callType === 'video' });
+      setLocalStream(stream);
+      
+      const { error } = await supabase.from("calls").update({ status: "accepted" }).eq("id", callData.id);
+      if (!error) router.push(`/chat/${callData.listing_id}?user=${callData.caller_id}`);
+    } catch (err) {
+      toast.error("Camera/Mic access denied. Call failed.");
+      handleDeclineCall();
     }
   };
 
   const handleDeclineCall = async () => {
     if (!callData) return;
-    console.log("📞 Declining call:", callData.id);
     await supabase.from("calls").update({ status: "rejected" }).eq("id", callData.id);
     resetCallState();
   };
 
   const handleEndCall = async () => {
     if (!callData) return;
-    console.log("📞 Ending call:", callData.id);
     await supabase.from("calls").update({ status: "ended" }).eq("id", callData.id);
     resetCallState();
-    toast.info("Call ended.");
   };
 
-  // Fetch the other user's name when a call is active
   useEffect(() => {
     if (callData && currentUser) {
       const otherId = callData.caller_id === currentUser.id ? callData.receiver_id : callData.caller_id;
-      supabase.from("profiles").select("full_name").eq("id", otherId).single().then(({ data }) => {
+      supabase.from("profiles").select("full_name, avatar_url").eq("id", otherId).single().then(({ data }) => {
         if (data) setOtherUserName(data.full_name || "User");
       });
     }
@@ -129,59 +138,108 @@ export default function GlobalCallListener() {
 
   if (callStatus === "idle" || !currentUser) return null;
 
+  // 🎨 PREMIUM UI RENDER
   return (
-    <>
-      {callStatus === "calling" && (
-        <div className="fixed inset-0 z-[100] bg-gray-950 flex flex-col items-center justify-center text-white animate-in fade-in duration-300">
-          <div className="w-24 h-24 rounded-full bg-gray-800 flex items-center justify-center mb-6 animate-pulse border-4 border-blue-500/30">
-            <span className="text-3xl font-bold">{otherUserName.charAt(0)}</span>
-          </div>
-          <h2 className="text-2xl font-bold mb-2">{otherUserName}</h2>
-          <p className="text-gray-400 mb-12">{callType === "audio" ? "Voice calling..." : "Video calling..."}</p>
-          <button onClick={handleEndCall} className="w-16 h-16 rounded-full bg-red-600 flex items-center justify-center hover:bg-red-500 transition shadow-lg shadow-red-900/50">
-            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" /></svg>
-          </button>
-        </div>
+    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center text-white overflow-hidden">
+      
+      {/* 📹 LIVE CAMERA BACKGROUND (If Video Call) */}
+      {callType === "video" && localStream && (
+        <video 
+          ref={videoRef} 
+          autoPlay 
+          muted 
+          playsInline 
+          className="absolute inset-0 w-full h-full object-cover blur-xl opacity-40 scale-110" 
+        />
       )}
+      
+      {/* Dark Overlay */}
+      <div className={`absolute inset-0 ${callType === "video" ? "bg-gray-950/80 backdrop-blur-xl" : "bg-gradient-to-b from-gray-900 via-gray-950 to-black"}`} />
 
-      {callStatus === "incoming" && (
-        <div className="fixed inset-0 z-[100] bg-gray-950 flex flex-col items-center justify-center text-white animate-in zoom-in-95 duration-300">
-          <div className="w-24 h-24 rounded-full bg-gray-800 flex items-center justify-center mb-6 animate-bounce border-4 border-green-500/30">
-            <span className="text-3xl font-bold">{otherUserName.charAt(0)}</span>
-          </div>
-          <h2 className="text-2xl font-bold mb-2">{otherUserName}</h2>
-          <p className="text-gray-400 mb-12">Incoming {callType === "audio" ? "Voice" : "Video"} Call...</p>
-          <div className="flex gap-8">
-            <button onClick={handleDeclineCall} className="w-16 h-16 rounded-full bg-red-600 flex items-center justify-center hover:bg-red-500 transition shadow-lg shadow-red-900/50">
-              <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" /></svg>
-            </button>
-            <button onClick={handleAcceptCall} className="w-16 h-16 rounded-full bg-green-600 flex items-center justify-center hover:bg-green-500 transition shadow-lg shadow-green-900/50">
-              <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {callStatus === "connected" && (
-        <div className={`fixed inset-0 z-[100] ${callType === "video" ? "bg-gray-900" : "bg-gray-950"} flex flex-col items-center justify-center text-white animate-in fade-in duration-300`}>
-          {callType === "video" && (
-            <div className="absolute inset-0 bg-gray-800 flex items-center justify-center">
-              <span className="text-6xl opacity-20">📹</span>
-              <p className="absolute bottom-10 text-gray-400 text-sm bg-black/50 px-4 py-2 rounded-full backdrop-blur-md">Video stream placeholder</p>
+      {/* Content */}
+      <div className="relative z-10 flex flex-col items-center w-full max-w-md px-6">
+        
+        {/* Avatar / Video Preview */}
+        <div className="relative mb-8">
+          {callType === "video" && localStream ? (
+            <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-white/20 shadow-2xl shadow-blue-500/20">
+              <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+            </div>
+          ) : (
+            <div className={`w-40 h-40 rounded-full bg-gray-800 flex items-center justify-center border-4 ${callStatus === "incoming" ? "border-green-500/50 animate-pulse" : "border-blue-500/50"} shadow-2xl`}>
+              <span className="text-5xl font-bold text-white">{otherUserName.charAt(0).toUpperCase()}</span>
             </div>
           )}
-          <div className={`relative z-10 w-24 h-24 rounded-full bg-gray-800 flex items-center justify-center mb-6 border-4 border-green-500 ${callType === "video" ? "w-32 h-32" : ""}`}>
-            <span className="text-3xl font-bold">{otherUserName.charAt(0)}</span>
-          </div>
-          <h2 className="text-2xl font-bold mb-2 relative z-10">{otherUserName}</h2>
-          <p className="text-green-400 mb-12 relative z-10 font-mono text-lg">
+          
+          {/* Status Ring */}
+          {callStatus === "calling" && (
+            <div className="absolute inset-0 rounded-full border-4 border-blue-500 animate-ping opacity-20"></div>
+          )}
+        </div>
+
+        {/* Name & Status */}
+        <h2 className="text-3xl font-bold mb-2 tracking-tight">{otherUserName}</h2>
+        
+        {callStatus === "calling" && (
+          <p className="text-gray-400 text-lg mb-12 flex items-center gap-2">
+            <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+            {callType === "audio" ? "Voice calling..." : "Video calling..."}
+          </p>
+        )}
+        
+        {callStatus === "incoming" && (
+          <p className="text-gray-400 text-lg mb-12 flex items-center gap-2">
+            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+            Incoming {callType === "audio" ? "Voice" : "Video"} Call...
+          </p>
+        )}
+
+        {callStatus === "connected" && (
+          <p className="text-green-400 text-2xl font-mono mb-12 tracking-widest">
             {Math.floor(callDuration / 60)}:{(callDuration % 60).toString().padStart(2, "0")}
           </p>
-          <button onClick={handleEndCall} className="relative z-10 w-16 h-16 rounded-full bg-red-600 flex items-center justify-center hover:bg-red-500 transition shadow-lg shadow-red-900/50">
-            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" /></svg>
-          </button>
+        )}
+
+        {/* 🎮 MASSIVE PREMIUM BUTTONS */}
+        <div className="flex gap-12 items-center justify-center w-full">
+          
+          {callStatus === "incoming" && (
+            <button 
+              onClick={handleDeclineCall} 
+              className="group flex flex-col items-center gap-2"
+            >
+              <div className="w-20 h-20 rounded-full bg-red-500 flex items-center justify-center shadow-lg shadow-red-500/50 group-hover:scale-110 group-hover:bg-red-600 transition-all duration-300">
+                <svg className="w-8 h-8 text-white rotate-[135deg]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+              </div>
+              <span className="text-xs text-gray-400 font-medium">Decline</span>
+            </button>
+          )}
+
+          {(callStatus === "calling" || callStatus === "connected") && (
+            <button 
+              onClick={handleEndCall} 
+              className="group flex flex-col items-center gap-2"
+            >
+              <div className="w-20 h-20 rounded-full bg-red-500 flex items-center justify-center shadow-lg shadow-red-500/50 group-hover:scale-110 group-hover:bg-red-600 transition-all duration-300">
+                <svg className="w-8 h-8 text-white rotate-[135deg]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+              </div>
+              <span className="text-xs text-gray-400 font-medium">End</span>
+            </button>
+          )}
+
+          {callStatus === "incoming" && (
+            <button 
+              onClick={handleAcceptCall} 
+              className="group flex flex-col items-center gap-2"
+            >
+              <div className="w-20 h-20 rounded-full bg-green-500 flex items-center justify-center shadow-lg shadow-green-500/50 group-hover:scale-110 group-hover:bg-green-600 transition-all duration-300 animate-bounce">
+                <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+              </div>
+              <span className="text-xs text-gray-400 font-medium">Accept</span>
+            </button>
+          )}
         </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 }

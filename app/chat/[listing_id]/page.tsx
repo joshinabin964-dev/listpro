@@ -87,7 +87,7 @@ export default function ChatRoomPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // 2. LIVE REALTIME LISTENER (Messages Only)
+  // 2. LIVE REALTIME LISTENER (Messages & Typing Only - Calls are handled globally)
   useEffect(() => {
     if (!currentUser || !listing_id) return;
     const channel = supabase.channel(`chat-room-${listing_id}`)
@@ -161,19 +161,37 @@ export default function ChatRoomPage() {
     toast.success("Message deleted for everyone");
   };
 
-  // 🔥 SIMPLE CALL TRIGGER (Global Listener handles the rest)
+  // 🔥 PREMIUM CALL TRIGGER (Requests Camera/Mic immediately)
   const startCall = async (type: 'audio' | 'video') => {
-    const loadingToast = toast.loading(`Initiating ${type} call...`);
-    const { error } = await supabase.from('calls').insert({
-      caller_id: currentUser.id,
-      receiver_id: otherUserId,
-      listing_id,
-      type,
-      status: 'ringing'
-    });
-    toast.dismiss(loadingToast);
-    if (error) toast.error("Failed to start call");
-    else toast.success("Calling...");
+    const loadingToast = toast.loading(`Requesting ${type} permissions...`);
+    
+    try {
+      // 1. Request Camera/Mic Permissions immediately
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: true, 
+        video: type === 'video' 
+      });
+      
+      // 2. Insert into Database to trigger Global Listener
+      const { error } = await supabase.from('calls').insert({
+        caller_id: currentUser.id,
+        receiver_id: otherUserId,
+        listing_id,
+        type,
+        status: 'ringing'
+      });
+      
+      toast.dismiss(loadingToast);
+      if (error) {
+        toast.error("Failed to start call");
+        stream.getTracks().forEach(track => track.stop()); // Stop camera if failed
+      } else {
+        toast.success("Calling...");
+      }
+    } catch (err) {
+      toast.dismiss(loadingToast);
+      toast.error("Camera/Mic access denied. Please allow permissions.");
+    }
   };
 
   const handleMediaSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
