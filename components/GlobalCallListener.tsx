@@ -19,10 +19,13 @@ export default function GlobalCallListener() {
   const [peer, setPeer] = useState<Peer | null>(null);
   const [callConnection, setCallConnection] = useState<MediaConnection | null>(null);
   
-  // 🔥 NEW STATES FOR FEATURES
   const [isMuted, setIsMuted] = useState(false);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  
+  // 🔥 NEW: State to swap Main and PiP videos
+  const [isSwapped, setIsSwapped] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -31,6 +34,7 @@ export default function GlobalCallListener() {
 
   // 1. Handle Auth & Initialize PeerJS
   useEffect(() => {
+    setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
     const getUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
@@ -139,6 +143,7 @@ export default function GlobalCallListener() {
     setCallData(null);
     setRemoteStream(null);
     setIsScreenSharing(false);
+    setIsSwapped(false);
     if (callConnection) callConnection.close();
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
@@ -174,7 +179,6 @@ export default function GlobalCallListener() {
     resetCallState();
   };
 
-  // 🔥 FEATURE: Toggle Mute
   const toggleMute = () => {
     if (localStream) {
       localStream.getAudioTracks().forEach(track => track.enabled = !track.enabled);
@@ -182,55 +186,70 @@ export default function GlobalCallListener() {
     }
   };
 
-  // 🔥 FEATURE: Flip Camera (Front/Back)
+  // 🔥 FIXED: Robust Flip Camera Logic
   const flipCamera = async () => {
-    if (!localStream || isScreenSharing) return;
+    if (!callConnection || !localStream) {
+      toast.error("Call not connected yet");
+      return;
+    }
     const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
     try {
+      // 1. Get new stream
       const newStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: newFacingMode },
-        audio: false // Keep audio from existing stream
+        audio: false 
       });
-      
       const newVideoTrack = newStream.getVideoTracks()[0];
       const oldVideoTrack = localStream.getVideoTracks()[0];
 
-      // Replace track in PeerJS connection for smooth transition
-      if (callConnection) {
-        // @ts-ignore - peerConnection is available in PeerJS
-        const senders = callConnection.peerConnection.getSenders();
+      // 2. Replace track in PeerJS connection
+      // @ts-ignore - peerConnection is available in PeerJS
+      const pc = callConnection.peerConnection;
+      if (pc) {
+        const senders = pc.getSenders();
         const videoSender = senders.find((s: any) => s.track && s.track.kind === 'video');
-        if (videoSender) videoSender.replaceTrack(newVideoTrack);
+        if (videoSender) {
+          await videoSender.replaceTrack(newVideoTrack);
+        }
       }
 
+      // 3. Update local state
       const audioTracks = localStream.getAudioTracks();
-      const combinedStream = new MediaStream([newVideoTrack, ...audioTracks]);
-      setLocalStream(combinedStream);
+      setLocalStream(new MediaStream([newVideoTrack, ...audioTracks]));
       setFacingMode(newFacingMode);
+      
+      // 4. Stop old track
       oldVideoTrack.stop();
+      toast.success("Camera flipped");
     } catch (err) {
-      toast.error("Could not flip camera");
+      console.error(err);
+      toast.error("Could not flip camera. Ensure permissions are allowed.");
     }
   };
 
-  // 🔥 FEATURE: Screen Share (Marketplace Superpower)
+  // 🔥 FIXED: Screen Share (Disabled on Mobile)
   const toggleScreenShare = async () => {
+    if (isMobile) {
+      toast("Screen sharing is only available on desktop");
+      return;
+    }
     if (!localStream) return;
     try {
       if (!isScreenSharing) {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
         const screenTrack = screenStream.getVideoTracks()[0];
         
-        if (callConnection) {
-          // @ts-ignore
-          const senders = callConnection.peerConnection.getSenders();
+        // @ts-ignore
+        const pc = callConnection?.peerConnection;
+        if (pc) {
+          const senders = pc.getSenders();
           const videoSender = senders.find((s: any) => s.track && s.track.kind === 'video');
           if (videoSender) videoSender.replaceTrack(screenTrack);
         }
 
         screenTrack.onended = () => {
           setIsScreenSharing(false);
-          flipCamera(); // Revert to camera when user stops sharing via browser UI
+          flipCamera(); // Revert
         };
 
         const audioTracks = localStream.getAudioTracks();
@@ -238,7 +257,7 @@ export default function GlobalCallListener() {
         setIsScreenSharing(true);
       } else {
         setIsScreenSharing(false);
-        flipCamera(); // Revert to camera
+        flipCamera(); // Revert
       }
     } catch (err) {
       toast.error("Screen share failed or cancelled");
@@ -259,17 +278,23 @@ export default function GlobalCallListener() {
 
   if (callStatus === "idle" || !currentUser) return null;
 
-  // 🎨 THE ULTIMATE UI
+  // 🎨 LOGIC FOR SWAPPING VIDEOS
+  const mainVideoStream = isSwapped ? remoteStream : localStream;
+  const pipVideoStream = isSwapped ? localStream : remoteStream;
+  const isMainLocal = !isSwapped;
+
   return (
     <div className="fixed inset-0 z-[100] bg-black text-white overflow-hidden font-sans">
       
-      {/* 📹 FULL SCREEN LOCAL CAMERA */}
-      {callType === "video" && localStream ? (
+      {/* 📹 MAIN FULL SCREEN VIDEO */}
+      {callType === "video" && mainVideoStream ? (
         <video 
-          ref={localVideoRef} 
-          autoPlay muted playsInline 
+          ref={isMainLocal ? localVideoRef : remoteVideoRef} 
+          autoPlay 
+          muted={isMainLocal} // Mute local if it's main, unmute if remote is main
+          playsInline 
           className="absolute inset-0 w-full h-full object-cover"
-          style={{ transform: isScreenSharing ? 'none' : 'scaleX(-1)' }} 
+          style={{ transform: (isMainLocal && !isScreenSharing) ? 'scaleX(-1)' : 'none' }} 
         />
       ) : (
         <div className="absolute inset-0 bg-gradient-to-b from-gray-900 via-[#0a0a0a] to-black flex items-center justify-center">
@@ -305,21 +330,32 @@ export default function GlobalCallListener() {
         </button>
       </div>
 
-      {/* 🖼️ PIP (Remote Video or Avatar) */}
-      {callType === "video" && (
-        <div className="absolute top-24 right-4 w-28 h-40 md:w-36 md:h-52 rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl z-20 bg-gray-800">
-          {remoteStream ? (
-            <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gray-800">
-              {otherUserAvatar ? (
-                <img src={otherUserAvatar} className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-2xl font-bold text-white">{otherUserName.charAt(0)}</span>
-              )}
-            </div>
-          )}
+      {/* 🖼️ INTERACTIVE PIP (Tap to Swap!) */}
+      {callType === "video" && pipVideoStream && callStatus === "connected" && (
+        <div 
+          onClick={() => setIsSwapped(!isSwapped)}
+          className="absolute top-24 right-4 w-28 h-40 md:w-36 md:h-52 rounded-2xl overflow-hidden border-2 border-white/40 shadow-2xl z-20 bg-gray-800 cursor-pointer hover:scale-105 transition-transform active:scale-95"
+        >
+          <video 
+            ref={isSwapped ? remoteVideoRef : localVideoRef} 
+            autoPlay 
+            muted={!isSwapped} 
+            playsInline 
+            className="w-full h-full object-cover"
+            style={{ transform: (!isSwapped && !isScreenSharing) ? 'scaleX(-1)' : 'none' }}
+          />
+          {/* Small Swap Icon Indicator */}
+          <div className="absolute bottom-2 right-2 bg-black/50 p-1 rounded-full">
+             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+          </div>
         </div>
+      )}
+      
+      {/* Fallback PiP if no remote stream yet */}
+      {callType === "video" && !pipVideoStream && callStatus !== "incoming" && (
+         <div className="absolute top-24 right-4 w-28 h-40 md:w-36 md:h-52 rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl z-20 bg-gray-800 flex items-center justify-center">
+            {otherUserAvatar ? <img src={otherUserAvatar} className="w-full h-full object-cover" /> : <span className="text-2xl font-bold">{otherUserName.charAt(0)}</span>}
+         </div>
       )}
 
       {/* 🎛️ BOTTOM CONTROL BAR */}
