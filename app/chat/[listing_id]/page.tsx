@@ -5,6 +5,8 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
 
+const EMOJI_OPTIONS = ["❤️", "👍", "😂", "😮", "😢", "🙏", "🔥", "👎"];
+
 export default function ChatRoomPage() {
   const { listing_id } = useParams();
   const searchParams = useSearchParams();
@@ -27,11 +29,16 @@ export default function ChatRoomPage() {
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // 🔥 NEW: Typing & Reaction States
+  const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
+  const [activeReactionMenu, setActiveReactionMenu] = useState<string | null>(null);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // 1. INITIAL LOAD
   useEffect(() => {
@@ -93,26 +100,36 @@ export default function ChatRoomPage() {
     initChat();
   }, [listing_id, otherUserId, router]);
 
-  // 2. LIVE REALTIME LISTENER (🔥 FIXED TYPO HERE)
+  // 2. LIVE REALTIME LISTENER (Handles INSERT for new messages & UPDATE for reactions)
   useEffect(() => {
     if (!currentUser || !listing_id || !otherUserId) return;
     
     const channel = supabase
       .channel(`room-${listing_id}`)
       .on("postgres_changes", { 
-        event: "INSERT", 
+        event: "*", // Listen to both INSERT and UPDATE
         schema: "public", 
         table: "messages", 
         filter: `listing_id=eq.${listing_id}` 
       }, (payload) => {
         const newMsg = payload.new;
-        // Fixed: changed 'm.receiver_id' to 'newMsg.receiver_id'
         if ((newMsg.sender_id === currentUser.id && newMsg.receiver_id === otherUserId) ||
             (newMsg.sender_id === otherUserId && newMsg.receiver_id === currentUser.id)) {
           setMessages((prev) => {
+            // If it's an update (reaction), find and update the existing message
+            if (payload.eventType === 'UPDATE') {
+                return prev.map(msg => msg.id === newMsg.id ? { ...msg, ...newMsg } : msg);
+            }
+            // If it's a new message
             if (prev.find(msg => msg.id === newMsg.id || msg.tempId === newMsg.id)) return prev;
             return [...prev, { ...newMsg, tempId: newMsg.id }];
           });
+        }
+      })
+      // 🔥 NEW: Listen for Typing Indicators via Broadcast
+      .on("broadcast", { event: "typing" }, (payload) => {
+        if (payload.user_id === otherUserId) {
+          setIsOtherUserTyping(payload.is_typing);
         }
       })
       .subscribe();
@@ -125,14 +142,64 @@ export default function ChatRoomPage() {
       if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
         setShowMoreMenu(false);
       }
+      // Close reaction menu if clicking outside
+      if (!event.target || !(event.target as Element).closest('.reaction-menu')) {
+        setActiveReactionMenu(null);
+      }
     };
-    if (showMoreMenu) document.addEventListener("mousedown", handleClickOutside);
+    if (showMoreMenu || activeReactionMenu) document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showMoreMenu]);
+  }, [showMoreMenu, activeReactionMenu]);
 
   useEffect(() => { 
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); 
-  }, [messages]);
+  }, [messages, isOtherUserTyping]);
+
+  // 🔥 NEW: Handle Typing Broadcast
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewMessage(e.target.value);
+    
+    const channel = supabase.channel(`room-${listing_id}`);
+    channel.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: { user_id: currentUser.id, is_typing: true }
+    });
+
+    clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+        channel.send({
+            type: 'broadcast',
+            event: 'typing',
+            payload: { user_id: currentUser.id, is_typing: false }
+        });
+    }, 2000);
+  };
+
+  // 🔥 NEW: Handle Reaction
+  const handleReaction = async (messageId: string, emoji: string) => {
+    if (!currentUser) return;
+    
+    const msg = messages.find(m => m.id === messageId);
+    const currentReactions = msg?.reactions || {};
+    
+    const newReactions = { ...currentReactions };
+    if (newReactions[currentUser.id] === emoji) {
+        delete newReactions[currentUser.id]; // Toggle off if already reacted
+    } else {
+        newReactions[currentUser.id] = emoji;
+    }
+
+    const { error } = await supabase
+        .from("messages")
+        .update({ reactions: newReactions })
+        .eq("id", messageId);
+
+    if (error) {
+        toast.error("Failed to add reaction");
+    }
+    setActiveReactionMenu(null);
+  };
 
   const handleMediaSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -450,15 +517,37 @@ export default function ChatRoomPage() {
 
         {messages.map((msg) => {
           const isMine = msg.sender_id === currentUser?.id;
+          const userReaction = msg.reactions?.[currentUser.id];
+          const otherUserReaction = msg.reactions?.[otherUserId];
+          
           return (
             <div key={msg.id || msg.tempId} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[75%] ${isMine ? "items-end" : "items-start"} flex flex-col`}>
+              <div className={`max-w-[75%] ${isMine ? "items-end" : "items-start"} flex flex-col relative group`}>
+                
+                {/* 🔥 NEW: Reaction Menu Popover */}
+                {activeReactionMenu === msg.id && (
+                  <div className={`reaction-menu absolute top-full ${isMine ? 'right-0' : 'left-0'} mt-1 bg-gray-800 border border-gray-700 rounded-full p-1.5 flex gap-1 shadow-xl z-20`}>
+                    {EMOJI_OPTIONS.map(emoji => (
+                      <button key={emoji} onClick={() => handleReaction(msg.id, emoji)} className="text-xl hover:scale-125 transition transform p-1">{emoji}</button>
+                    ))}
+                  </div>
+                )}
+
                 <div 
                   onClick={msg.isFailed ? () => handleSendMessage(msg) : undefined}
-                  className={`px-4 py-2 rounded-2xl transition ${
+                  className={`px-4 py-2 rounded-2xl transition relative ${
                     isMine ? "bg-blue-600 rounded-br-none" : "bg-gray-800 rounded-bl-none"
                   } ${msg.isFailed ? 'opacity-80 border border-red-500/50 cursor-pointer hover:opacity-100' : ''}`}
                 >
+                  {/* 🔥 NEW: Small Reaction Button (appears on hover/focus) */}
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setActiveReactionMenu(activeReactionMenu === msg.id ? null : msg.id); }}
+                    className={`absolute -top-2 ${isMine ? '-left-2' : '-right-2'} w-6 h-6 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-md border border-gray-600`}
+                    title="React"
+                  >
+                    <span className="text-xs">😊</span>
+                  </button>
+
                   {msg.media_url && msg.media_url !== "loading" ? (
                     msg.media_type === 'image' ? (
                       <img src={msg.media_url} alt="Shared" className="max-w-full rounded-lg cursor-pointer hover:opacity-90" onClick={() => window.open(msg.media_url, '_blank')} />
@@ -482,6 +571,14 @@ export default function ChatRoomPage() {
                   )}
                 </div>
                 
+                {/* 🔥 NEW: Render Reactions Below Message */}
+                {(userReaction || otherUserReaction) && (
+                  <div className={`flex gap-1 mt-1 ${isMine ? 'self-end' : 'self-start'}`}>
+                    {userReaction && <span className="bg-blue-600/20 border border-blue-500/30 text-xs px-2 py-0.5 rounded-full">{userReaction}</span>}
+                    {otherUserReaction && otherUserReaction !== userReaction && <span className="bg-gray-700/50 border border-gray-600 text-xs px-2 py-0.5 rounded-full">{otherUserReaction}</span>}
+                  </div>
+                )}
+
                 <div className="flex items-center gap-1 mt-1 px-1">
                   {msg.isFailed ? (
                     <span className="text-[10px] text-red-400 font-medium flex items-center gap-1 cursor-pointer hover:text-red-300" onClick={() => handleSendMessage(msg)}>
@@ -505,6 +602,21 @@ export default function ChatRoomPage() {
             </div>
           );
         })}
+        
+        {/* 🔥 NEW: Typing Indicator */}
+        {isOtherUserTyping && (
+          <div className="flex justify-start">
+            <div className="bg-gray-800 rounded-2xl rounded-bl-none px-4 py-3 flex items-center gap-2">
+              <div className="flex gap-1">
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+              </div>
+              <span className="text-xs text-gray-400 ml-2">{otherUser?.full_name || 'User'} is typing...</span>
+            </div>
+          </div>
+        )}
+        
         <div ref={messagesEndRef} />
       </div>
 
@@ -520,7 +632,7 @@ export default function ChatRoomPage() {
         ) : (
           <input
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={handleInputChange}
             placeholder="Type a message..."
             className="flex-1 bg-gray-900 border border-gray-700 rounded-full px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition"
             disabled={sending || isUploadingMedia}
