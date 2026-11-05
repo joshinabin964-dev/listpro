@@ -225,9 +225,12 @@ export default function DashboardPage() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 py-8 md:py-12 relative z-10">
+        {/* 🔥 FIXED: Proper JSX rendering for the welcome message */}
         <div className="mb-10">
           <h1 className="text-4xl md:text-5xl font-bold mb-3 tracking-tight">
-            Welcome back{userName ? `, <span className="text-blue-400">${userName}</span>` : ''}!
+            Welcome back{userName ? `, ` : ''}
+            {userName && <span className="text-blue-400">{userName}</span>}
+            !
           </h1>
           <p className="text-gray-400 text-lg">Here is your business overview for today.</p>
         </div>
