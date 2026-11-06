@@ -81,7 +81,7 @@ export default function ProfilePage() {
     }
   };
 
-  // 🔥 SAVE NAME, PHONE, COUNTRY
+  // 🔥 SAVE NAME, PHONE, COUNTRY + LOCATION
   const saveDetails = async () => {
     setSaving(true);
     const { data: { session } } = await supabase.auth.getSession();
@@ -90,16 +90,24 @@ export default function ProfilePage() {
       id: session.user.id, 
       full_name: fullName,
       phone_number: phoneNumber,
-      country: country
+      country: country,
+      latitude: latitude,
+      longitude: longitude
     });
     
     if (error) {
       console.error("Profile Save Error:", error);
       toast.error('Failed to save details: ' + error.message);
+      setSaving(false);
     } else {
-      toast.success('Profile details saved! ✅');
+      // 🔥 Show success message
+      toast.success('Profile saved successfully! Redirecting... ✅');
+      
+      //  Wait 1.5 seconds then redirect to dashboard
+      setTimeout(() => {
+        router.push('/dashboard');
+      }, 1500);
     }
-    setSaving(false);
   };
 
   // 🔥 GET CURRENT LOCATION
@@ -117,19 +125,7 @@ export default function ProfilePage() {
         setLatitude(lat);
         setLongitude(lng);
 
-        const { data: { session } } = await supabase.auth.getSession();
-        const { error } = await supabase.from('profiles').upsert({
-          id: session.user.id,
-          latitude: lat,
-          longitude: lng
-        });
-
-        if (error) {
-          console.error("Location save error:", error);
-          toast.error('Failed to save location: ' + error.message);
-        } else {
-          toast.success('Location saved successfully! 📍');
-        }
+        toast.success('Location captured! Click Save to update. 📍');
         setLocationLoading(false);
       },
       (error) => {
@@ -182,7 +178,7 @@ export default function ProfilePage() {
 
       <div className="max-w-2xl mx-auto px-4 md:px-6 py-8 relative z-10 space-y-8">
         
-        {/* 📸 Avatar Section */}
+        {/*  Avatar Section */}
         <div className="flex flex-col items-center space-y-4">
           <div className="relative group">
             <div className="w-32 h-32 rounded-full bg-gray-900 border-4 border-white/10 flex items-center justify-center overflow-hidden shadow-2xl shadow-blue-500/10 group-hover:border-blue-500/50 transition-all duration-300">
@@ -255,28 +251,10 @@ export default function ProfilePage() {
               />
               <svg className="w-5 h-5 text-gray-500 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             </div>
-
-            <button 
-              onClick={saveDetails} 
-              disabled={saving} 
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 py-3.5 rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
-            >
-              {saving ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                  Save Details
-                </>
-              )}
-            </button>
           </div>
         </div>
 
-        {/* 📍 Location Card */}
+        {/* 🔥 MOVED: Location Card NOW BEFORE SAVE BUTTON */}
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-3xl border border-white/10 p-6 md:p-8">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-green-500/10 rounded-lg text-green-400">
@@ -325,6 +303,25 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
+
+        {/* 🔥 SAVE BUTTON - NOW AT THE BOTTOM */}
+        <button 
+          onClick={saveDetails} 
+          disabled={saving} 
+          className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 py-4 rounded-2xl font-bold transition-all shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-lg"
+        >
+          {saving ? (
+            <>
+              <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              Saving...
+            </>
+          ) : (
+            <>
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              Save & Continue
+            </>
+          )}
+        </button>
 
         {/* 📧 Account Info Card */}
         <div className="bg-gray-900/50 backdrop-blur-sm rounded-3xl border border-white/10 p-6 md:p-8">
